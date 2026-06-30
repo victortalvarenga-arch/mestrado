@@ -547,38 +547,25 @@ def salvar_grafico_comparacao(payload: dict, output_path: str) -> None:
     print(f"Gráfico de comparação salvo em: {os.path.abspath(output_path)}")
 
 
-def salvar_grafico_consolidado_heuristica(
-    comparison_paths_by_scenario: dict,
-    output_path: str,
-) -> None:
+def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, output_path: str) -> None:
     """
-    Gera 1 gráfico consolidado por heurística/cenário (normal ou stress),
-    mantendo todas as métricas no eixo X e colocando 4 barras por métrica:
-    - Balanced
-    - Rack Strict
-    - Group Strict
-    - Comm Cost Strict
+    Gera um gráfico consolidado por heurística/cenário, mantendo todas as métricas
+    no eixo X e barras coloridas para cada configuração.
+    Ajusta o fontsize e rotaciona as labels do eixo X para melhor visualização.
+    Eixo Y é fixo em 0-100 para consistência entre todas as heurísticas.
     """
-
-    scenario_order = [
-        "01_balanced",
-        "02_rack_strict",
-        "03_group_strict",
-        "04_comm_cost_strict",
-    ]
-
+    scenario_order = ["01_balanced", "02_rack_strict", "03_group_strict", "04_comm_cost_strict"]
     scenario_labels = {
         "01_balanced": "Balanced",
         "02_rack_strict": "Rack Strict",
         "03_group_strict": "Group Strict",
-        "04_comm_cost_strict": "Comm Cost Strict",
+        "04_comm_cost_strict": "Comm Cost Strict"
     }
-
     scenario_colors = {
-        "01_balanced": "#4C78A8",
-        "02_rack_strict": "#F58518",
-        "03_group_strict": "#54A24B",
-        "04_comm_cost_strict": "#E45756",
+        "01_balanced": "#B3CDE3",
+        "02_rack_strict": "#6497B1",
+        "03_group_strict": "#005B96",
+        "04_comm_cost_strict": "#03396C"
     }
 
     metricas = [
@@ -596,36 +583,29 @@ def salvar_grafico_consolidado_heuristica(
 
     for scenario_name in scenario_order:
         comparison_json_path = comparison_paths_by_scenario.get(scenario_name)
-
         if comparison_json_path is None or not os.path.exists(comparison_json_path):
-            raise FileNotFoundError(
-                f"Arquivo de comparação não encontrado para o cenário '{scenario_name}'."
-            )
-
+            # preenche com zeros se não houver arquivo
+            scenario_values[scenario_name] = [0.0]*len(metricas)
+            continue
         with open(comparison_json_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
-
         deltas = payload.get("deltas", {})
-
         valores_metricas = []
         for metric_key, _ in metricas:
-            improvement_percent = deltas.get(metric_key, {}).get("improvement_percent")
-            if improvement_percent is None:
-                improvement_percent = 0.0
-            valores_metricas.append(improvement_percent)
-
+            value = deltas.get(metric_key, {}).get("improvement_percent")
+            if value is None:
+                value = 0.0
+            valores_metricas.append(float(value))
         scenario_values[scenario_name] = valores_metricas
 
-    fig, ax = plt.subplots(figsize=(16, 7))
-
+    fig, ax = plt.subplots(figsize=(16,7))
     base_positions = list(range(len(metricas)))
     bar_width = 0.18
-    offsets = [-1.5 * bar_width, -0.5 * bar_width, 0.5 * bar_width, 1.5 * bar_width]
+    offsets = [-1.5*bar_width, -0.5*bar_width, 0.5*bar_width, 1.5*bar_width]
 
     for idx, scenario_name in enumerate(scenario_order):
         positions = [x + offsets[idx] for x in base_positions]
         values = scenario_values[scenario_name]
-
         ax.bar(
             positions,
             values,
@@ -633,32 +613,39 @@ def salvar_grafico_consolidado_heuristica(
             color=scenario_colors[scenario_name],
             label=scenario_labels[scenario_name],
             edgecolor="black",
-            linewidth=0.5,
+            linewidth=0.5
         )
 
     ax.axhline(0, color="black", linewidth=0.8)
+    # Força eixo Y fixo para todos
+    ax.set_ylim(0,100)
 
-    ax.set_ylabel("Melhoria (%)", fontsize=16)
+    # Configura fontes globais
+    plt.rcParams.update({
+        "font.size": 18,
+        "axes.titlesize": 22,
+        "axes.labelsize": 20,
+        "ytick.labelsize": 18,
+        "legend.fontsize": 22
+    })
+
+    # Ajusta fontsize do eixo X e rotaciona
+    num_labels = len(metricas)
+    fig_width = 16
+    fontsize_x = 20  # fixo maior como pediu
     ax.set_xticks(base_positions)
-    ax.set_xticklabels(
-        [label for _, label in metricas],
-        rotation=25,
-        ha="right",
-        fontsize=13,
-    )
-    ax.tick_params(axis="y", labelsize=13)
+    ax.set_xticklabels([label for _, label in metricas], rotation=20, ha="right", fontsize=fontsize_x)
 
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-    ax.legend(fontsize=12, ncol=2, frameon=False)
-
+    ax.set_ylabel("Melhoria (%)", fontsize=22)
+    ax.tick_params(axis="y", labelsize=22)
+    ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.3)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    ax.legend(ncol=4, frameon=False, loc="upper center", bbox_to_anchor=(0.5,1.18), fontsize=22)
 
-    print(f"Gráfico consolidado salvo em: {os.path.abspath(output_path)}")
+    plt.tight_layout(rect=[0,0,1,0.92])
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
 
 
 def salvar_json_comparacao_execucoes(
