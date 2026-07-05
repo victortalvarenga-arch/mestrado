@@ -146,6 +146,32 @@ def resumir_trafego_loop(traffic_events: list[dict]) -> dict:
         "estimated_comm_cost": total_comm_cost,
     }
 
+def extrair_eventos_trafego_por_tarefa(data: dict) -> dict:
+    """
+    Mapeia cada tarefa (job_id, task_id) ao seu evento de tráfego de rede
+    dentro de uma única execução, permitindo comparar tarefa a tarefa entre
+    duas execuções (ex.: baseline x network-aware) sem precisar repetir
+    simulações.
+    """
+    eventos_por_tarefa = {}
+
+    for snapshot in data.get("snapshots", []):
+        network_events = snapshot.get("state", {}).get("network_traffic", [])
+
+        for evento in network_events:
+            chave = (evento.get("job_id"), evento.get("task_id"))
+            eventos_por_tarefa[chave] = {
+                "total_hops": evento.get("total_hops", 0),
+                "cross_server_flows": evento.get("cross_server_flows", 0),
+                "cross_rack_flows": evento.get("cross_rack_flows", 0),
+                "cross_group_flows": evento.get("cross_group_flows", 0),
+                "estimated_comm_cost": evento.get("estimated_comm_cost", 0.0),
+                "flow_count": len(evento.get("flows", [])),
+            }
+
+    return eventos_por_tarefa
+
+
 def calcular_metricas_trafego_tarefa_compacta(
     job_id: int,
     task_id: int,

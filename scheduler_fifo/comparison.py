@@ -1,6 +1,8 @@
-from imports import os, json, datetime, plt
+from imports import os, json, datetime, plt, math
 from serialization import tornar_json_serializavel
 from execution_metrics import calcular_makespan_json
+from network_metrics import extrair_eventos_trafego_por_tarefa
+from statistical_tests import analisar_significancia_estatistica, salvar_significancia_markdown
 
 
 def sanitizar_nome_arquivo(valor: str) -> str:
@@ -121,6 +123,65 @@ def extrair_resumo_execucao_json(data: dict) -> dict:
         "avg_ready_tasks": avg_ready_tasks,
         "avg_cluster_utilization": avg_cluster_utilization,
     }
+
+def calcular_distribuicao_ganho_percentual_tarefa(
+    previous_events: dict,
+    current_events: dict,
+    metric_key: str,
+    lower_is_better: bool = True
+) -> dict | None:
+    """
+    Calcula, tarefa a tarefa, o ganho percentual de uma métrica entre a execução
+    anterior (baseline) e a atual, dentro da própria execução (sem repetir simulações).
+
+    O desvio-padrão é ponderado pela magnitude da métrica no baseline: uma tarefa
+    que já tinha pouquíssimo custo/hops pode "melhorar" 100% trivialmente, então
+    seu ganho percentual pesa menos do que o de uma tarefa que concentrava mais
+    custo de comunicação.
+    """
+    pares_peso_ganho = []
+
+    for chave, evento_atual in current_events.items():
+        evento_anterior = previous_events.get(chave)
+
+        if evento_anterior is None:
+            continue
+
+        if metric_key == "avg_hops_per_flow":
+            if evento_anterior["flow_count"] == 0 or evento_atual["flow_count"] == 0:
+                continue
+            valor_anterior = evento_anterior["total_hops"] / evento_anterior["flow_count"]
+            valor_atual = evento_atual["total_hops"] / evento_atual["flow_count"]
+        else:
+            valor_anterior = evento_anterior.get(metric_key, 0)
+            valor_atual = evento_atual.get(metric_key, 0)
+
+        if valor_anterior == 0:
+            continue
+
+        delta_percentual = ((valor_atual - valor_anterior) / valor_anterior) * 100
+        ganho_percentual = -delta_percentual if lower_is_better else delta_percentual
+        pares_peso_ganho.append((valor_anterior, ganho_percentual))
+
+    if not pares_peso_ganho:
+        return None
+
+    peso_total = sum(peso for peso, _ in pares_peso_ganho)
+
+    if peso_total == 0:
+        return None
+
+    media_ponderada = sum(peso * ganho for peso, ganho in pares_peso_ganho) / peso_total
+    variancia_ponderada = sum(
+        peso * (ganho - media_ponderada) ** 2 for peso, ganho in pares_peso_ganho
+    ) / peso_total
+
+    return {
+        "mean_weighted": media_ponderada,
+        "std_weighted": math.sqrt(variancia_ponderada),
+        "n": len(pares_peso_ganho),
+    }
+
 
 def calcular_delta_metrica(previous_value, current_value, lower_is_better: bool = True) -> dict:
     if previous_value is None:
@@ -336,208 +397,45 @@ def salvar_grafico_comparacao(payload: dict, output_path: str) -> None:
 
     labels = []
     valores = []
+    desvios_padrao = []
+    possui_distribuicao = False
 
     for chave, label in metricas:
-        improvement_percent = deltas.get(chave, {}).get("improvement_percent")
+        metric_delta = deltas.get(chave, {})
+        improvement_percent = metric_delta.get("improvement_percent")
 
-        if improvement_percent is not None:
-            labels.append(label)
-            valores.append(improvement_percent)
+        if improvement_percent is None:
+            continue
+
+        labels.append(label)
+        valores.append(improvement_percent)
+
+        distribuicao = metric_delta.get("distribution")
+        if distribuicao is not None:
+            desvios_padrao.append(distribuicao["std_weighted"])
+            possui_distribuicao = True
+        else:
+            desvios_padrao.append(0)
 
     if not labels:
         return
 
-    plt.figure(figsize=(12, 6))
-    plt.bar(labels, valores)
-    plt.axhline(0)
-    plt.title("Melhoria percentual da execução atual em relação à anterior")
-    plt.ylabel("Melhoria (%)")
-    plt.xticks(rotation=35, ha="right")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-
-    print(f"Gráfico de comparação salvo em: {os.path.abspath(output_path)}")
-
-def salvar_json_comparacao_execucoes(
-    previous_execution_path: str | None,
-    current_execution_path: str,
-    output_dir: str,
-    artifact_prefix: str | None = None
-) -> dict:
-    os.makedirs(output_dir, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-
-    with open(current_execution_path, "r", encoding="utf-8") as f:
-        current_data = json.load(f)
-
-    current_summary = extrair_resumo_execucao_json(current_data)
-
-    if previous_execution_path is None or not os.path.exists(previous_execution_path):
-        payload = {
-            "metadata": {
-                "generated_at": datetime.now().isoformat(),
-                "comparison_available": False,
-                "reason": "Nenhuma execução anterior encontrada para comparação.",
-                "previous_execution_path": previous_execution_path,
-                "current_execution_path": current_execution_path,
-            },
-            "current_summary": current_summary,
-        }
-
-        prefixo_sem_comparacao = sanitizar_nome_arquivo(
-            artifact_prefix or f"comparison_no_previous_execution_{timestamp}"
-        )
-
-        caminho_json = os.path.join(
-            output_dir,
-            f"{prefixo_sem_comparacao}_no_previous_execution.json"
-        )
-
-        with open(caminho_json, "w", encoding="utf-8") as f:
-            json.dump(
-                tornar_json_serializavel(payload),
-                f,
-                ensure_ascii=False,
-                indent=2
-            )
-
-        print(f"JSON de comparação salvo em: {os.path.abspath(caminho_json)}")
-
-        return {
-            "comparison_json": caminho_json,
-            "comparison_chart": None,
-            "comparison_summary": None,
-        }
-
-    with open(previous_execution_path, "r", encoding="utf-8") as f:
-        previous_data = json.load(f)
-
-    previous_summary = extrair_resumo_execucao_json(previous_data)
-    deltas = comparar_resumos_execucao(previous_summary, current_summary)
-
-    previous_policy = previous_summary.get("policy", "unknown")
-    current_policy = current_summary.get("policy", "unknown")
-
-    scenario_name = current_summary.get("network_aware_parameters", {}).get(
-        "scenario_name",
-        current_policy
-    )
-
-    payload = {
-        "metadata": {
-            "generated_at": datetime.now().isoformat(),
-            "comparison_available": True,
-            "scenario_name": scenario_name,
-            "previous_execution_path": previous_execution_path,
-            "current_execution_path": current_execution_path,
-            "previous_policy": previous_policy,
-            "current_policy": current_policy,
-        },
-        "previous_summary": previous_summary,
-        "current_summary": current_summary,
-        "deltas": deltas,
-        "interpretation": {
-            "lower_is_better_metrics": [
-                "makespan",
-                "traffic_events",
-                "flow_count",
-                "total_hops",
-                "cross_server_flows",
-                "cross_rack_flows",
-                "cross_group_flows",
-                "estimated_comm_cost",
-                "avg_comm_cost_per_scheduled_task",
-                "avg_hops_per_flow",
-                "avg_ready_tasks",
-            ],
-            "neutral_metrics": [
-                "finished_tasks",
-                "avg_busy_servers",
-                "max_busy_servers",
-                "avg_running_tasks",
-                "avg_cluster_utilization",
-            ],
-            "reading_rule": "Para métricas lower_is_better, improvement_absolute positivo indica melhoria da execução atual em relação à anterior.",
-        },
-    }
-
-    base_policy_for_name = current_summary.get("network_aware_parameters", {}).get(
-        "base_scheduler_policy",
-        previous_policy
-    )
-
-    prefixo = sanitizar_nome_arquivo(
-        artifact_prefix or f"{base_policy_for_name}_{scenario_name}"
-    )
-
-    caminho_json = os.path.join(
-        output_dir,
-        f"{prefixo}_comparison.json"
-    )
-
-    caminho_grafico = os.path.join(
-        output_dir,
-        f"{prefixo}_chart.png"
-    )
-
-    caminho_markdown = os.path.join(
-        output_dir,
-        f"{prefixo}_summary.md"
-    )
-
-    with open(caminho_json, "w", encoding="utf-8") as f:
-        json.dump(
-            tornar_json_serializavel(payload),
-            f,
-            ensure_ascii=False,
-            indent=2
-        )
-
-    print(f"JSON de comparação salvo em: {os.path.abspath(caminho_json)}")
-
-    salvar_grafico_comparacao(payload, caminho_grafico)
-    salvar_resumo_markdown_comparacao(payload, caminho_markdown)
-
-    return {
-        "comparison_json": caminho_json,
-        "comparison_chart": caminho_grafico,
-        "comparison_summary": caminho_markdown,
-    }
-
-def salvar_grafico_comparacao(payload: dict, output_path: str) -> None:
-    deltas = payload.get("deltas", {})
-
-    metricas = [
-        ("makespan", "Makespan"),
-        ("estimated_comm_cost", "Custo comunicação"),
-        ("total_hops", "Hops"),
-        ("flow_count", "Fluxos"),
-        ("cross_server_flows", "Cross-server"),
-        ("cross_rack_flows", "Cross-rack"),
-        ("cross_group_flows", "Cross-group"),
-        ("avg_hops_per_flow", "Hops/fluxo"),
-    ]
-
-    labels = []
-    valores = []
-
-    for chave, label in metricas:
-        improvement_percent = deltas.get(chave, {}).get("improvement_percent")
-
-        if improvement_percent is not None:
-            labels.append(label)
-            valores.append(improvement_percent)
-
-    if not labels:
-        return
+    posicoes = list(range(len(labels)))
 
     plt.figure(figsize=(12, 6))
-    plt.bar(labels, valores, width=0.55)
+    plt.bar(posicoes, valores, width=0.55)
+
+    if possui_distribuicao:
+        plt.errorbar(
+            posicoes, valores, yerr=desvios_padrao,
+            fmt="none", ecolor="black", elinewidth=2.2, capsize=5,
+            label="Desvio padrão (ponderado por tarefa)"
+        )
+        plt.legend(fontsize=10, loc="best")
+
     plt.axhline(0, color="black", linewidth=0.8)
     plt.ylabel("Melhoria (%)", fontsize=13)
-    plt.xticks(rotation=30, ha="right", fontsize=11)
+    plt.xticks(posicoes, labels, rotation=30, ha="right", fontsize=11)
     plt.yticks(fontsize=11)
     plt.grid(axis="y", linestyle="--", alpha=0.4)
     plt.tight_layout()
@@ -547,6 +445,15 @@ def salvar_grafico_comparacao(payload: dict, output_path: str) -> None:
     print(f"Gráfico de comparação salvo em: {os.path.abspath(output_path)}")
 
 
+SCENARIO_ORDER = ["01_balanced", "02_rack_strict", "03_group_strict", "04_comm_cost_strict"]
+SCENARIO_LABELS = {
+    "01_balanced": "Balanced",
+    "02_rack_strict": "Rack Strict",
+    "03_group_strict": "Group Strict",
+    "04_comm_cost_strict": "Comm Cost Strict",
+}
+
+
 def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, output_path: str) -> None:
     """
     Gera um gráfico consolidado por heurística/cenário, mantendo todas as métricas
@@ -554,13 +461,8 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
     Ajusta o fontsize e rotaciona as labels do eixo X para melhor visualização.
     Eixo Y é fixo em 0-100 para consistência entre todas as heurísticas.
     """
-    scenario_order = ["01_balanced", "02_rack_strict", "03_group_strict", "04_comm_cost_strict"]
-    scenario_labels = {
-        "01_balanced": "Balanced",
-        "02_rack_strict": "Rack Strict",
-        "03_group_strict": "Group Strict",
-        "04_comm_cost_strict": "Comm Cost Strict"
-    }
+    scenario_order = SCENARIO_ORDER
+    scenario_labels = SCENARIO_LABELS
     scenario_colors = {
         "01_balanced": "#B3CDE3",
         "02_rack_strict": "#6497B1",
@@ -569,10 +471,10 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
     }
 
     metricas = [
-        ("makespan", "Makespan"),
+        # ("makespan", "Makespan"),
         ("estimated_comm_cost", "Custo comunicação"),
         ("total_hops", "Hops"),
-        ("flow_count", "Fluxos"),
+        # ("flow_count", "Fluxos"),
         ("cross_server_flows", "Cross-server"),
         ("cross_rack_flows", "Cross-rack"),
         ("cross_group_flows", "Cross-group"),
@@ -580,32 +482,40 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
     ]
 
     scenario_values = {}
+    scenario_distributions = {}
 
     for scenario_name in scenario_order:
         comparison_json_path = comparison_paths_by_scenario.get(scenario_name)
         if comparison_json_path is None or not os.path.exists(comparison_json_path):
             # preenche com zeros se não houver arquivo
             scenario_values[scenario_name] = [0.0]*len(metricas)
+            scenario_distributions[scenario_name] = [None]*len(metricas)
             continue
         with open(comparison_json_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
         deltas = payload.get("deltas", {})
         valores_metricas = []
+        distribuicoes_metricas = []
         for metric_key, _ in metricas:
-            value = deltas.get(metric_key, {}).get("improvement_percent")
+            metric_delta = deltas.get(metric_key, {})
+            value = metric_delta.get("improvement_percent")
             if value is None:
                 value = 0.0
             valores_metricas.append(float(value))
+            distribuicoes_metricas.append(metric_delta.get("distribution"))
         scenario_values[scenario_name] = valores_metricas
+        scenario_distributions[scenario_name] = distribuicoes_metricas
 
-    fig, ax = plt.subplots(figsize=(16,7))
+    fig, ax = plt.subplots(figsize=(16,7.5))
     base_positions = list(range(len(metricas)))
     bar_width = 0.18
     offsets = [-1.5*bar_width, -0.5*bar_width, 0.5*bar_width, 1.5*bar_width]
+    legenda_erro_adicionada = False
 
     for idx, scenario_name in enumerate(scenario_order):
         positions = [x + offsets[idx] for x in base_positions]
         values = scenario_values[scenario_name]
+        distribuicoes = scenario_distributions[scenario_name]
         ax.bar(
             positions,
             values,
@@ -615,6 +525,24 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
             edgecolor="black",
             linewidth=0.5
         )
+
+        desvios_padrao = []
+        possui_distribuicao = False
+
+        for distribuicao in distribuicoes:
+            if distribuicao is not None:
+                desvios_padrao.append(distribuicao["std_weighted"])
+                possui_distribuicao = True
+            else:
+                desvios_padrao.append(0)
+
+        if possui_distribuicao:
+            ax.errorbar(
+                positions, values, yerr=desvios_padrao,
+                fmt="none", ecolor="black", elinewidth=1.5, capsize=4, zorder=6,
+                label=None if legenda_erro_adicionada else "Desvio padrão (ponderado por tarefa)"
+            )
+            legenda_erro_adicionada = True
 
     ax.axhline(0, color="black", linewidth=0.8)
     # Força eixo Y fixo para todos
@@ -642,9 +570,9 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    ax.legend(ncol=4, frameon=False, loc="upper center", bbox_to_anchor=(0.5,1.18), fontsize=22)
+    ax.legend(ncol=5, frameon=False, loc="upper center", bbox_to_anchor=(0.5,1.18), fontsize=20)
 
-    plt.tight_layout(rect=[0,0,1,0.92])
+    plt.tight_layout(rect=[0,0,1,0.90])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
 
 
@@ -704,6 +632,37 @@ def salvar_json_comparacao_execucoes(
     previous_summary = extrair_resumo_execucao_json(previous_data)
     deltas = comparar_resumos_execucao(previous_summary, current_summary)
 
+    previous_events = extrair_eventos_trafego_por_tarefa(previous_data)
+    current_events = extrair_eventos_trafego_por_tarefa(current_data)
+
+    metricas_com_distribuicao = [
+        "estimated_comm_cost",
+        "total_hops",
+        "cross_server_flows",
+        "cross_rack_flows",
+        "cross_group_flows",
+        "avg_hops_per_flow",
+    ]
+
+    for metrica in metricas_com_distribuicao:
+        distribuicao = calcular_distribuicao_ganho_percentual_tarefa(
+            previous_events=previous_events,
+            current_events=current_events,
+            metric_key=metrica,
+            lower_is_better=True,
+        )
+        if distribuicao is not None:
+            deltas[metrica]["distribution"] = distribuicao
+
+    try:
+        resultado_estatistico = analisar_significancia_estatistica(
+            previous_execution_path=previous_execution_path,
+            current_execution_path=current_execution_path,
+        )
+    except Exception as erro:
+        print(f"Aviso: falha ao calcular significância estatística: {erro}")
+        resultado_estatistico = None
+
     previous_policy = previous_summary.get("policy", "unknown")
     current_policy = current_summary.get("policy", "unknown")
 
@@ -725,6 +684,7 @@ def salvar_json_comparacao_execucoes(
         "previous_summary": previous_summary,
         "current_summary": current_summary,
         "deltas": deltas,
+        "statistical_significance": resultado_estatistico,
         "interpretation": {
             "lower_is_better_metrics": [
                 "makespan",
@@ -767,6 +727,11 @@ def salvar_json_comparacao_execucoes(
         f"{prefixo}_summary.md"
     )
 
+    caminho_significancia = os.path.join(
+        output_dir,
+        f"{prefixo}_statistical_significance.md"
+    )
+
     with open(caminho_json, "w", encoding="utf-8") as f:
         json.dump(
             tornar_json_serializavel(payload),
@@ -780,8 +745,18 @@ def salvar_json_comparacao_execucoes(
     salvar_grafico_comparacao(payload, caminho_grafico)
     salvar_resumo_markdown_comparacao(payload, caminho_markdown)
 
+    if resultado_estatistico is not None:
+        try:
+            salvar_significancia_markdown(resultado_estatistico, caminho_significancia)
+        except Exception as erro:
+            print(f"Aviso: falha ao salvar relatório de significância estatística: {erro}")
+            caminho_significancia = None
+    else:
+        caminho_significancia = None
+
     return {
         "comparison_json": caminho_json,
         "comparison_chart": caminho_grafico,
         "comparison_summary": caminho_markdown,
+        "statistical_significance_summary": caminho_significancia,
     }
