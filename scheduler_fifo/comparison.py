@@ -3,6 +3,12 @@ from serialization import tornar_json_serializavel
 from execution_metrics import calcular_makespan_json
 from network_metrics import extrair_eventos_trafego_por_tarefa
 from statistical_tests import analisar_significancia_estatistica, salvar_significancia_markdown
+from matplotlib.patches import Patch
+
+
+# Outliers individuais (pontos além de 1.5*IQR) poluem o boxplot quando há
+# milhares de tarefas; deixe True se quiser exibi-los mesmo assim.
+MOSTRAR_OUTLIERS_BOXPLOT = False
 
 
 def sanitizar_nome_arquivo(valor: str) -> str:
@@ -124,6 +130,28 @@ def extrair_resumo_execucao_json(data: dict) -> dict:
         "avg_cluster_utilization": avg_cluster_utilization,
     }
 
+def calcular_percentil(valores_ordenados: list, fracao: float) -> float:
+    """Percentil por interpolação linear (mesma convenção do numpy 'linear')."""
+    if not valores_ordenados:
+        return 0.0
+
+    if len(valores_ordenados) == 1:
+        return float(valores_ordenados[0])
+
+    posicao = fracao * (len(valores_ordenados) - 1)
+    indice_inferior = int(math.floor(posicao))
+    indice_superior = int(math.ceil(posicao))
+
+    if indice_inferior == indice_superior:
+        return float(valores_ordenados[indice_inferior])
+
+    peso_superior = posicao - indice_inferior
+    return float(
+        valores_ordenados[indice_inferior] * (1 - peso_superior)
+        + valores_ordenados[indice_superior] * peso_superior
+    )
+
+
 def calcular_distribuicao_ganho_percentual_tarefa(
     previous_events: dict,
     current_events: dict,
@@ -134,10 +162,9 @@ def calcular_distribuicao_ganho_percentual_tarefa(
     Calcula, tarefa a tarefa, o ganho percentual de uma métrica entre a execução
     anterior (baseline) e a atual, dentro da própria execução (sem repetir simulações).
 
-    O desvio-padrão é ponderado pela magnitude da métrica no baseline: uma tarefa
-    que já tinha pouquíssimo custo/hops pode "melhorar" 100% trivialmente, então
-    seu ganho percentual pesa menos do que o de uma tarefa que concentrava mais
-    custo de comunicação.
+    Além da média/desvio ponderados (mantidos por compatibilidade no JSON), a
+    distribuição guarda as amostras brutas por tarefa ("samples") e os quartis,
+    que alimentam os boxplots dos gráficos.
     """
     pares_peso_ganho = []
 
@@ -176,10 +203,19 @@ def calcular_distribuicao_ganho_percentual_tarefa(
         peso * (ganho - media_ponderada) ** 2 for peso, ganho in pares_peso_ganho
     ) / peso_total
 
+    ganhos = [ganho for _, ganho in pares_peso_ganho]
+    ganhos_ordenados = sorted(ganhos)
+
     return {
         "mean_weighted": media_ponderada,
         "std_weighted": math.sqrt(variancia_ponderada),
         "n": len(pares_peso_ganho),
+        "samples": ganhos,
+        "min": ganhos_ordenados[0],
+        "q1": calcular_percentil(ganhos_ordenados, 0.25),
+        "median": calcular_percentil(ganhos_ordenados, 0.5),
+        "q3": calcular_percentil(ganhos_ordenados, 0.75),
+        "max": ganhos_ordenados[-1],
     }
 
 
@@ -382,13 +418,16 @@ def salvar_resumo_markdown_comparacao(payload: dict, output_path: str) -> None:
 
 
 def salvar_grafico_comparacao(payload: dict, output_path: str) -> None:
+    """
+    Boxplot do ganho percentual por tarefa (baseline vs. atual), uma caixa por
+    métrica. Métricas globais sem distribuição por tarefa (ex.: makespan) não
+    entram no boxplot; seguem disponíveis no summary Markdown e no JSON.
+    """
     deltas = payload.get("deltas", {})
 
     metricas = [
-        ("makespan", "Makespan"),
         ("estimated_comm_cost", "Custo comunicação"),
         ("total_hops", "Hops"),
-        ("flow_count", "Fluxos"),
         ("cross_server_flows", "Cross-server"),
         ("cross_rack_flows", "Cross-rack"),
         ("cross_group_flows", "Cross-group"),
@@ -396,26 +435,17 @@ def salvar_grafico_comparacao(payload: dict, output_path: str) -> None:
     ]
 
     labels = []
-    valores = []
-    desvios_padrao = []
-    possui_distribuicao = False
+    amostras = []
 
     for chave, label in metricas:
-        metric_delta = deltas.get(chave, {})
-        improvement_percent = metric_delta.get("improvement_percent")
+        distribuicao = deltas.get(chave, {}).get("distribution") or {}
+        samples = distribuicao.get("samples")
 
-        if improvement_percent is None:
+        if not samples:
             continue
 
         labels.append(label)
-        valores.append(improvement_percent)
-
-        distribuicao = metric_delta.get("distribution")
-        if distribuicao is not None:
-            desvios_padrao.append(distribuicao["std_weighted"])
-            possui_distribuicao = True
-        else:
-            desvios_padrao.append(0)
+        amostras.append(samples)
 
     if not labels:
         return
@@ -423,18 +453,22 @@ def salvar_grafico_comparacao(payload: dict, output_path: str) -> None:
     posicoes = list(range(len(labels)))
 
     plt.figure(figsize=(12, 6))
-    plt.bar(posicoes, valores, width=0.55)
-
-    if possui_distribuicao:
-        plt.errorbar(
-            posicoes, valores, yerr=desvios_padrao,
-            fmt="none", ecolor="black", elinewidth=2.2, capsize=5,
-            label="Desvio padrão (ponderado por tarefa)"
-        )
-        plt.legend(fontsize=10, loc="best")
+    plt.boxplot(
+        amostras,
+        positions=posicoes,
+        widths=0.55,
+        patch_artist=True,
+        showfliers=MOSTRAR_OUTLIERS_BOXPLOT,
+        boxprops={"facecolor": "#B3CDE3", "edgecolor": "black", "linewidth": 0.8},
+        medianprops={"color": "black", "linewidth": 1.6},
+        whiskerprops={"color": "black", "linewidth": 0.9},
+        capprops={"color": "black", "linewidth": 0.9},
+        flierprops={"marker": "o", "markersize": 2.5, "markerfacecolor": "gray",
+                    "markeredgecolor": "none", "alpha": 0.5},
+    )
 
     plt.axhline(0, color="black", linewidth=0.8)
-    plt.ylabel("Melhoria (%)", fontsize=13)
+    plt.ylabel("Ganho por tarefa (%)", fontsize=13)
     plt.xticks(posicoes, labels, rotation=30, ha="right", fontsize=11)
     plt.yticks(fontsize=11)
     plt.grid(axis="y", linestyle="--", alpha=0.4)
@@ -456,10 +490,10 @@ SCENARIO_LABELS = {
 
 def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, output_path: str) -> None:
     """
-    Gera um gráfico consolidado por heurística/cenário, mantendo todas as métricas
-    no eixo X e barras coloridas para cada configuração.
-    Ajusta o fontsize e rotaciona as labels do eixo X para melhor visualização.
-    Eixo Y é fixo em 0-100 para consistência entre todas as heurísticas.
+    Gera um boxplot consolidado por heurística: para cada métrica no eixo X,
+    uma caixa por cenário network-aware com a distribuição do ganho percentual
+    por tarefa (mediana, quartis e whiskers em 1.5*IQR), no lugar do antigo
+    gráfico de barras com média ± desvio padrão.
     """
     scenario_order = SCENARIO_ORDER
     scenario_labels = SCENARIO_LABELS
@@ -481,72 +515,58 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
         ("avg_hops_per_flow", "Hops/fluxo"),
     ]
 
-    scenario_values = {}
-    scenario_distributions = {}
+    scenario_samples = {}
 
     for scenario_name in scenario_order:
         comparison_json_path = comparison_paths_by_scenario.get(scenario_name)
         if comparison_json_path is None or not os.path.exists(comparison_json_path):
-            # preenche com zeros se não houver arquivo
-            scenario_values[scenario_name] = [0.0]*len(metricas)
-            scenario_distributions[scenario_name] = [None]*len(metricas)
+            scenario_samples[scenario_name] = [None]*len(metricas)
             continue
         with open(comparison_json_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
         deltas = payload.get("deltas", {})
-        valores_metricas = []
-        distribuicoes_metricas = []
+        amostras_metricas = []
         for metric_key, _ in metricas:
-            metric_delta = deltas.get(metric_key, {})
-            value = metric_delta.get("improvement_percent")
-            if value is None:
-                value = 0.0
-            valores_metricas.append(float(value))
-            distribuicoes_metricas.append(metric_delta.get("distribution"))
-        scenario_values[scenario_name] = valores_metricas
-        scenario_distributions[scenario_name] = distribuicoes_metricas
+            distribuicao = deltas.get(metric_key, {}).get("distribution") or {}
+            samples = distribuicao.get("samples")
+            amostras_metricas.append(samples if samples else None)
+        scenario_samples[scenario_name] = amostras_metricas
 
-    fig, ax = plt.subplots(figsize=(16,7.5))
+    fig, ax = plt.subplots(figsize=(16,8))
     base_positions = list(range(len(metricas)))
-    bar_width = 0.18
-    offsets = [-1.5*bar_width, -0.5*bar_width, 0.5*bar_width, 1.5*bar_width]
-    legenda_erro_adicionada = False
+    box_width = 0.18
+    offsets = [-1.5*box_width, -0.5*box_width, 0.5*box_width, 1.5*box_width]
 
     for idx, scenario_name in enumerate(scenario_order):
-        positions = [x + offsets[idx] for x in base_positions]
-        values = scenario_values[scenario_name]
-        distribuicoes = scenario_distributions[scenario_name]
-        ax.bar(
-            positions,
-            values,
-            width=bar_width,
-            color=scenario_colors[scenario_name],
-            label=scenario_labels[scenario_name],
-            edgecolor="black",
-            linewidth=0.5
+        positions = []
+        data = []
+
+        for metric_idx, samples in enumerate(scenario_samples[scenario_name]):
+            if samples:
+                positions.append(base_positions[metric_idx] + offsets[idx])
+                data.append(samples)
+
+        if not data:
+            continue
+
+        ax.boxplot(
+            data,
+            positions=positions,
+            widths=box_width*0.9,
+            patch_artist=True,
+            manage_ticks=False,
+            showfliers=MOSTRAR_OUTLIERS_BOXPLOT,
+            boxprops={"facecolor": scenario_colors[scenario_name],
+                      "edgecolor": "black", "linewidth": 0.6},
+            medianprops={"color": "black", "linewidth": 1.4},
+            whiskerprops={"color": "black", "linewidth": 0.8},
+            capprops={"color": "black", "linewidth": 0.8},
+            flierprops={"marker": "o", "markersize": 2.5, "markerfacecolor": "gray",
+                        "markeredgecolor": "none", "alpha": 0.5},
         )
 
-        desvios_padrao = []
-        possui_distribuicao = False
-
-        for distribuicao in distribuicoes:
-            if distribuicao is not None:
-                desvios_padrao.append(distribuicao["std_weighted"])
-                possui_distribuicao = True
-            else:
-                desvios_padrao.append(0)
-
-        if possui_distribuicao:
-            ax.errorbar(
-                positions, values, yerr=desvios_padrao,
-                fmt="none", ecolor="black", elinewidth=1.5, capsize=4, zorder=6,
-                label=None if legenda_erro_adicionada else "Desvio padrão (ponderado por tarefa)"
-            )
-            legenda_erro_adicionada = True
-
     ax.axhline(0, color="black", linewidth=0.8)
-    # Força eixo Y fixo para todos
-    ax.set_ylim(0,100)
+    ax.set_xlim(-0.5, len(metricas) - 0.5)
 
     # Configura fontes globais
     plt.rcParams.update({
@@ -564,16 +584,23 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
     ax.set_xticks(base_positions)
     ax.set_xticklabels([label for _, label in metricas], rotation=20, ha="right", fontsize=fontsize_x)
 
-    ax.set_ylabel("Melhoria (%)", fontsize=22)
+    ax.set_ylabel("Ganho por tarefa (%)", fontsize=22)
     ax.tick_params(axis="y", labelsize=22)
     ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.3)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    ax.legend(ncol=5, frameon=False, loc="upper center", bbox_to_anchor=(0.5,1.18), fontsize=20)
+    # boxplot não gera entradas de legenda automaticamente; usa patches proxy
+    legend_handles = [
+        Patch(facecolor=scenario_colors[s], edgecolor="black", label=scenario_labels[s])
+        for s in scenario_order
+    ]
+    ax.legend(handles=legend_handles, ncol=4, frameon=False,
+              loc="upper center", bbox_to_anchor=(0.5,1.15), fontsize=17)
 
-    plt.tight_layout(rect=[0,0,1,0.90])
+    plt.tight_layout(rect=[0,0,1,0.9])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
 def salvar_json_comparacao_execucoes(

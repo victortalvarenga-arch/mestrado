@@ -18,7 +18,7 @@ import glob
 # Configurações principais
 HEURISTICS_TO_RUN = ["easy", "heft", "cpop", "peft"]  # selecione as heurísticas
 # HEURISTICS_TO_RUN = ["peft"]
-SCENARIO_TYPE = "normal"  # "normal" ou "stress"
+SCENARIO_TYPE = "stress"  # "normal" ou "stress"
 REEXECUTAR_SIMULACOES = False  # False = reaproveita dados salvos e só regenera relatórios/gráficos
 
 
