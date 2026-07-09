@@ -1,0 +1,35 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Significância estatística (baseline vs.\ network-aware, por tarefa) no cenário normal.}
+\label{tab:significancia_normal}
+\begin{tabular}{llrrrrr}
+\toprule
+Heurística & Cenário & Hops & Cross-srv & Cross-rack & Cross-grp & Custo \\
+\midrule
+EASY & Balanced & 29,73\%$^{*}$ & 29,30\%$^{*}$ & 57,58\%$^{*}$ & -- & 31,40\%$^{*}$ \\
+EASY & Rack Strict & 29,63\%$^{*}$ & 29,20\%$^{*}$ & 57,58\%$^{*}$ & -- & 31,35\%$^{*}$ \\
+EASY & Group Strict & 29,63\%$^{*}$ & 29,20\%$^{*}$ & 57,58\%$^{*}$ & -- & 31,35\%$^{*}$ \\
+EASY & Comm Cost Strict & 29,31\%$^{*}$ & 28,92\%$^{*}$ & 54,55\%$^{*}$ & -- & 31,57\%$^{*}$ \\
+\addlinespace
+HEFT & Balanced & 32,59\%$^{*}$ & 21,04\%$^{*}$ & 93,05\%$^{*}$ & -- & 32,47\%$^{*}$ \\
+HEFT & Rack Strict & 32,51\%$^{*}$ & 20,85\%$^{*}$ & 93,55\%$^{*}$ & -- & 32,46\%$^{*}$ \\
+HEFT & Group Strict & 32,51\%$^{*}$ & 20,95\%$^{*}$ & 93,05\%$^{*}$ & -- & 32,55\%$^{*}$ \\
+HEFT & Comm Cost Strict & 32,51\%$^{*}$ & 20,95\%$^{*}$ & 93,05\%$^{*}$ & -- & 32,61\%$^{*}$ \\
+\addlinespace
+CPOP & Balanced & 23,08\%$^{*}$ & 23,30\%$^{*}$ & 4,35\% & -- & 23,54\%$^{*}$ \\
+CPOP & Rack Strict & 22,99\%$^{*}$ & 23,10\%$^{*}$ & 13,04\% & -- & 23,49\%$^{*}$ \\
+CPOP & Group Strict & 22,99\%$^{*}$ & 23,10\%$^{*}$ & 13,04\% & -- & 23,49\%$^{*}$ \\
+CPOP & Comm Cost Strict & 23,08\%$^{*}$ & 23,30\%$^{*}$ & 4,35\% & -- & 23,72\%$^{*}$ \\
+\addlinespace
+PEFT & Balanced & 20,77\%$^{*}$ & 21,04\%$^{*}$ & 0,00\% & -- & 21,04\%$^{*}$ \\
+PEFT & Rack Strict & 20,67\%$^{*}$ & 20,85\%$^{*}$ & 7,14\% & -- & 21,03\%$^{*}$ \\
+PEFT & Group Strict & 20,67\%$^{*}$ & 20,85\%$^{*}$ & 7,14\% & -- & 21,03\%$^{*}$ \\
+PEFT & Comm Cost Strict & 20,67\%$^{*}$ & 20,95\%$^{*}$ & 0,00\% & -- & 21,21\%$^{*}$ \\
+\addlinespace
+\bottomrule
+\end{tabular}
+
+\vspace{2mm}
+\footnotesize Ganho médio percentual por tarefa (baseline vs.\ network-aware). $^{*}$ indica significância estatística ($p<0{,}05$): a normalidade das diferenças foi avaliada via Shapiro-Wilk, com teste $t$ pareado quando normal e Wilcoxon signed-rank caso contrário. ``--'' indica dados insuficientes (nenhuma diferença entre as execuções ou menos de 3 pares de tarefas válidos).
+\end{table}
