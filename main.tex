@@ -19,7 +19,6 @@
 \usepackage{tabularx}
 \usepackage{booktabs}
 
-
 \sloppy
 
 \title{Um escalonador de \textit{workflows} guiado pela perspectiva de comunicação}
@@ -407,279 +406,191 @@ Portanto, o histórico atua como um mecanismo de reforço de localidade.
 %
 Ele não substitui as métricas de rede calculadas para os candidatos, mas ajusta a decisão com base no comportamento observado em execuções anteriores. Com isso, o escalonador combina três elementos: a ordenação fornecida por uma política tradicional, a avaliação topológica do custo de comunicação e um ajuste histórico por tarefa. Essa combinação permite manter a simplicidade das heurísticas clássicas, ao mesmo tempo em que adiciona consciência de rede ao processo de escalonamento.
 
-
-\subsection{Cenários e parâmetros}
+\subsection{Parâmetros e métricas}
 \label{subsec:configuracao_experimentos}
 
-% \textcolor{red}{Monte uma tabela resumindo os cenários.}
-
-A Tabela~\ref{tab:resumo_cenarios} apresenta um resumo das duas configurações experimentais utilizadas neste estudo, detalhando número de workflows, número total de tarefas, número de nós computacionais e roteadores.
-
-\begin{table}[h]
-\centering
-\caption{Resumo das configurações experimentais.}
-\label{tab:resumo_cenarios}
-\begin{tabular}{lcccc}
-\hline
-\textbf{Cenário} & \textbf{Workflows} & \textbf{Tarefas totais} & \textbf{Nós computacionais} & \textbf{Roteadores} \\
-\hline
-Normal & 200 & 1.068 & 980 & 49 \\
-Stressed & 4.000 & 21.360 & 90 & 9 \\
-\hline
-\end{tabular}
-\end{table}
-
-
-As simulações foram organizadas a partir dessas duas configurações. Cada tarefa possui tempo estimado de execução, tempo de submissão, consumo de recurso e dependências explícitas em relação a outras tarefas do mesmo DAG.
-
-Para cada configuração experimental, foram avaliadas quatro políticas base de escalonamento: EASY Backfilling, HEFT, CPOP e PEFT. Sobre cada política base, foram executadas cinco diferentes configurações da política \textit{network-aware}, totalizando 40 simulações no total. A execução denominada \textit{baseline} corresponde à política base sem consciência de rede e é utilizada como referência para comparação. Os demais cenários modificam os pesos atribuídos às métricas de rede, permitindo avaliar o impacto de diferentes prioridades topológicas.
-
-As configurações detalhadas de pesos são apresentadas na Tabela~\ref{tab:cenarios_avaliados}, mantendo a mesma notação utilizada nos resultados para consistência com os gráficos e summaries.
+A campanha de simulação escalonou 4.000 \textit{workflows} (totalizando 21.360 tarefas) oriundos da literatura~\cite{juve2013characterizing} em uma topologia Dragonfly composta por 90 servidores interconectados por 9 \textit{switches}.
+%
+Cada tarefa possui tempo estimado de execução, tempo de submissão, consumo de recurso e dependências explícitas em relação a outras tarefas do mesmo DAG.
+%
+Foram avaliadas quatro políticas base de escalonamento; sobre cada política base, foram executadas cinco diferentes configurações da política \textit{network-aware} (resumidas na Tabela~\ref{tab:cenarios_avaliados}). 
+%
+A política \textit{baseline} não possui consciência de rede. 
 
 \begin{table}[h!]
 \centering
-\caption{Configurações de pesos avaliadas durante as simulações, padronizadas com a notação usada nos gráficos e summaries.}
+\caption{Configurações de pesos avaliadas durante as simulações, padronizadas com a notação usada nos gráficos.}
 \label{tab:cenarios_avaliados}
 \begin{tabular}{ll}
 \hline
-\textbf{Identificador} & \textbf{Descrição da configuração de pesos} \\
+\textbf{Configuração} & \textbf{Descrição da configuração de pesos} \\
 \hline
-baseline & Execução da política base sem consciência de rede. \\
-balanced & Pesos balanceados entre as métricas de rede. \\
-rack strict & Maior penalização para fluxos entre \textit{racks} distintos. \\
-group strict & Maior penalização para fluxos entre grupos distintos. \\
-comm cost strict & Maior penalização para o custo estimado de comunicação. \\
+\textit{baseline} & Execução da política base sem consciência de rede. \\
+\textit{balanced} & Pesos balanceados entre as métricas de rede. \\
+\textit{rack strict} & Maior penalização para fluxos entre \textit{racks} distintos. \\
+\textit{group strict} & Maior penalização para fluxos entre grupos distintos. \\
+\textit{comm cost strict} & Maior penalização para o custo estimado de comunicação. \\
 \hline
 \end{tabular}
 \end{table}
 
-Essa organização permite analisar o comportamento do escalonador tanto em ambientes com maior disponibilidade relativa de recursos quanto em cenários de maior concorrência entre tarefas, para todas as heurísticas e configurações de pesos da política \textit{network-aware}.
-
-
-
-\subsection{Métricas selecionadas}
-\label{subsec:metricas_avaliadas}
-
-As métricas selecionadas para avaliação concentram-se no impacto das decisões de alocação sobre a topologia de rede, uma vez que o \textit{makespan} permaneceu constante em todas as execuções. Foram analisadas a quantidade total de fluxos de comunicação entre tarefas dependentes, o número total de saltos percorridos na topologia, os fluxos entre servidores, \textit{racks} e grupos distintos, o custo estimado de comunicação, a média de saltos por fluxo e a utilização média dos recursos computacionais.
-
+Quando às métricas, foram analisadas a quantidade total de fluxos de comunicação entre tarefas dependentes, o número total de saltos percorridos na topologia, os fluxos entre servidores, \textit{racks} e grupos distintos, o custo estimado de comunicação, a média de saltos por fluxo e a utilização média dos recursos computacionais.
+%
 Para todas as métricas de comunicação, valores menores indicam melhor desempenho, pois representam menor tráfego atravessando diferentes níveis da topologia. Em particular, reduções na quantidade de fluxos e no número de saltos evidenciam que o escalonador conseguiu aproximar tarefas dependentes, diminuindo o custo lógico de comunicação e aumentando a eficiência na utilização da infraestrutura de rede.
 
-
-\section{Resultados e discussão}
+\section{Resultados}
 \label{sec:resultados_discussao}
 
-Inicialmente, os resultados são apresentados de forma consolidada por heurística, utilizando \textit{boxplots} agrupados que incluem as quatro configurações de pesos da política \textit{network-aware}.
-%
-Em seguida, são feitas análises numéricas baseadas nos resumos consolidados, destacando melhorias quantitativas, comparações entre heurísticas e a influência de diferentes parametrizações da política.
-%
-Esta abordagem permite uma visão integrada do desempenho do escalonador, evidenciando tanto ganhos específicos por métrica quanto efeitos gerais da consciência de rede na execução dos \textit{workflows}.
+Este capítulo apresenta e discute os resultados obtidos a partir das simulações realizadas, avaliando o impacto da política de escalonamento consciente da rede quando combinada com as quatro heurísticas de base adotadas neste trabalho (EASY, HEFT, CPOP e PEFT). A Seção~\ref{subsec:discussao_quantitativa} apresenta uma discussão quantitativa dos ganhos observados nas principais métricas de comunicação, com base nos diagramas de caixa consolidados por heurística. Em seguida, a Seção~\ref{sec:significancia_estatistica} avalia a significância estatística desses ganhos, por meio de testes pareados aplicados às diferenças de desempenho entre a política \textit{baseline} e a política \textit{network-aware}. Por fim, a Seção~\ref{subsec:discussao_comparativa} apresenta uma discussão comparativa entre as heurísticas, destacando pontos fortes e limitações de cada uma quando combinadas com a proposta deste trabalho.
+
 
 %------------------------------------------------
-\subsection{Resultados consolidados por cenários}
-\label{subsec:resultados_consolidados}
+\subsection{Discussão quantitativa}
+\label{subsec:discussao_quantitativa}
 
-
-As Figuras~\ref{fig:easy_stressed}-\ref{fig:peft_stressed} apresentam os resultados consolidados por heurística no cenário \textit{stressed}, na forma de \textit{boxplots} da distribuição do ganho percentual por tarefa em relação à execução de referência (\textit{baseline}).
+A Figura~\ref{fig:politicas} apresenta os resultados consolidados em diagramas de caixa, por heurística, demonstrando o ganho em relação à execução de \textit{baseline}.
 %
-Para cada métrica do eixo horizontal, há uma caixa por configuração de pesos da política \textit{network-aware} (\textit{balanced}, \textit{rack strict}, \textit{group strict}, \textit{comm cost strict}): a caixa delimita o intervalo interquartil da distribuição, a linha central indica a mediana e as hastes se estendem até 1,5 vez o intervalo interquartil, com \textit{outliers} omitidos para facilitar a leitura.
+A análise dos resultados mostra ganho médio por tarefa no número total de saltos variando de 3,62\% a 22,14\%, com destaque para a heurística \textit{EASY Backfilling} na configuração \textit{comm cost strict}. 
 %
-Valores positivos indicam tarefas que melhoraram em relação ao \textit{baseline}, e valores negativos, tarefas que pioraram.
+Os fluxos entre \textit{racks} apresentaram reduções médias de 10,43\% a 29,48\%, com maior efeito na configuração \textit{rack strict}, enquanto os fluxos entre grupos distintos diminuíram, em média, até 38,51\%, destacando-se EASY e CPOP na configuração \textit{group strict}. 
 %
-Como as métricas são contagens discretas por tarefa (por exemplo, número de fluxos entre \textit{racks}), os ganhos assumem valores quantizados, o que explica hastes alcançando patamares como $-100\%$: uma minoria de tarefas piora quando o escalonador reorganiza o posicionamento, embora a mediana e o intervalo interquartil permaneçam em ganho neutro ou positivo e o ganho médio por tarefa seja positivo e estatisticamente significativo, conforme detalhado na Seção~\ref{sec:significancia_estatistica}.
+O custo estimado de comunicação apresentou queda média de 3,61\% a 23,29\%. 
+%
+Já os fluxos entre servidores melhoraram, em média, até 16,90\% nas heurísticas EASY e CPOP, mas apresentaram piora média de até 5,13\% em HEFT e PEFT, um efeito de compensação: ao aproximar tarefas dependentes para reduzir deslocamentos mais custosos na topologia, o escalonador aumenta comunicações locais entre servidores. 
+%
+Esses valores correspondem às médias das distribuições apresentadas nas figuras e indicam que a política \textit{network-aware} conseguiu auxiliar o posicionamento das tarefas e reduzir o tráfego lógico sobre a topologia.
 
-
-\begin{figure*}[htbp]
+\begin{figure*}
 \centering
-\begin{minipage}{0.48\textwidth}
-\includegraphics[width=\linewidth]{images/easy_stress_grouped_chart.png}
-\caption{EASY - Stressed}
-\label{fig:easy_stressed}
-\end{minipage}
-\hfill
-\begin{minipage}{0.48\textwidth}
-\includegraphics[width=\linewidth]{images/heft_stress_grouped_chart.png}
-\caption{HEFT - Stressed}
-\label{fig:heft_stressed}
-\end{minipage}
-
-\vspace{0.3cm}
-
-\begin{minipage}{0.48\textwidth}
-\includegraphics[width=\linewidth]{images/cpop_stress_grouped_chart.png}
-\caption{CPOP - Stressed}
-\label{fig:cpop_stressed}
-\end{minipage}
-\hfill
-\begin{minipage}{0.48\textwidth}
-\includegraphics[width=\linewidth]{images/peft_stress_grouped_chart.png}
-\caption{PEFT - Stressed}
-\label{fig:peft_stressed}
-\end{minipage}
+\subfigure[\textit{Easy Backfilling}.]{
+    \includegraphics[width=0.48\linewidth]{images/easy_stress_grouped_chart.png}
+    \label{fig:easy_stressed}
+}
+\subfigure[HEFT.]{
+    \includegraphics[width=0.48\linewidth]{images/heft_stress_grouped_chart.png}
+    \label{fig:heft_stressed}
+}
+\subfigure[CPOP.]{
+    \includegraphics[width=0.48\linewidth]{images/cpop_stress_grouped_chart.png}
+    \label{fig:cpop_stressed}
+}
+\subfigure[PEFT.]{
+    \includegraphics[width=0.48\linewidth]{images/peft_stress_grouped_chart.png}
+    \label{fig:peft_stressed}
+}
+\caption{Resultados consolidados por política de base. \textcolor{red}{Diminuir a largura das figuras. Não está visível.}}
+\label{fig:politicas}
 \end{figure*}
 
-A análise dos resultados no cenário \textit{stressed} mostra ganho médio por tarefa no número total de saltos (\textit{hops}) variando de 3,62\% a 22,14\%, com destaque para a heurística EASY na configuração \textit{comm cost strict}. Os fluxos entre \textit{racks} apresentaram reduções médias de 10,43\% a 29,48\%, com maior efeito na configuração \textit{rack strict}, enquanto os fluxos entre grupos distintos diminuíram, em média, até 38,51\%, destacando-se EASY e CPOP na configuração \textit{group strict}. O custo estimado de comunicação apresentou queda média de 3,61\% a 23,29\%. Já os fluxos entre servidores melhoraram, em média, até 16,90\% nas heurísticas EASY e CPOP, mas apresentaram piora média de até 5,13\% em HEFT e PEFT, um efeito de compensação: ao aproximar tarefas dependentes para reduzir deslocamentos mais custosos na topologia, o escalonador aumenta comunicações locais entre servidores. Esses valores correspondem às médias das distribuições apresentadas nas figuras e indicam que a política \textit{network-aware} conseguiu otimizar o posicionamento das tarefas e reduzir o tráfego lógico sobre a topologia.
+De forma geral, as heurísticas analisadas apresentaram melhorias consistentes em métricas de comunicação, sem impacto sobre o \textit{makespan} (resultados omitidos por permanecerem constantes). 
+%
+Configurações específicas, como \textit{rack strict}, \textit{group strict} e \textit{comm cost strict}, permitiram priorizar tipos específicos de fluxo na topologia. O uso de histórico contribuiu para aumentar a localidade das tarefas, reduzindo \textit{hops} e custos de comunicação. \textcolor{red}{Olhando o gráfico, não entendi como o histório ajudou. O que o histórico fez?}. 
+%
+Mesmo heurísticas simples, como EASY e CPOP, apresentaram ganhos iguais ou superiores aos de HEFT e PEFT, reforçando a modularidade e flexibilidade da política com consciência da rede.
 
-No cenário \textit{normal}, com maior disponibilidade relativa de recursos, a política \textit{network-aware} também apresentou melhorias consistentes em relação à execução sem consciência de rede, confirmando a robustez da abordagem mesmo em ambientes menos pressionados. O ganho médio por tarefa variou de 20,67\% a 32,59\% no número total de saltos (\textit{hops}), de 20,85\% a 29,30\% nos fluxos entre servidores — sem o efeito de compensação observado no cenário \textit{stressed} — e de 21,03\% a 32,61\% no custo estimado de comunicação, com reduções de até 93,55\% nos fluxos entre \textit{racks} para HEFT na configuração \textit{rack strict}, conforme detalhado na Tabela~\ref{tab:significancia_normal}. Nesse cenário, os fluxos entre grupos praticamente não ocorrem, dada a folga de recursos na topologia. Por concisão, os \textit{boxplots} consolidados são apresentados apenas para o cenário \textit{stressed}.
+\subsection{Análise de significância estatística}
+\label{sec:significancia_estatistica}
 
-De forma geral, todas as heurísticas analisadas apresentaram melhorias consistentes em métricas de comunicação, sem impacto sobre o \textit{makespan}. Configurações específicas, como \textit{rack strict}, \textit{group strict} e \textit{comm cost strict}, permitiram priorizar tipos específicos de fluxo na topologia. O uso de histórico contribuiu para aumentar a localidade das tarefas, reduzindo hops e custos de comunicação. Mesmo heurísticas mais simples, como EASY e CPOP, apresentaram ganhos iguais ou superiores aos de HEFT e PEFT, reforçando a modularidade e flexibilidade do escalonador.
+Para distinguir melhorias consistentes de variações pontuais, a distribuição das diferenças pareadas de tarefas foi avaliada por meio do teste de Shapiro-Wilk. 
+%
+Quando a hipótese de normalidade foi satisfeita, aplicou-se o teste \textit{t} pareado. 
+%
+Nos casos em que a distribuição não apresentou normalidade, utilizou-se o teste não paramétrico de Wilcoxon. 
+%
+Em ambos os casos, adotou-se nível de significância de 5\% ($p < 0{,}05$). Além disso, foi calculado o tamanho do efeito, utilizando o coeficiente de Cohen ($d$) para o teste \textit{t} pareado e o coeficiente $r = Z/\sqrt{n}$ para o teste de Wilcoxon. \textcolor{red}{Não entendi. Qual desses valores está reportado na Tabela 2? O que a Tabela 2 mostra? O que é custo?} 
 
-Em resumo, os resultados quantitativos reforçam a capacidade da política \textit{network-aware} de reduzir congestionamento lógico e melhorar a eficiência de comunicação em workflows distribuídos, tanto em cenários de alta pressão (\textit{stressed}) quanto em cenários com maior disponibilidade de recursos (\textit{normal}).
+\begin{table}[h]
+\centering
+\small
+\caption{Significância estatística (\textit{baseline} vs.\ \textit{network-aware}, por tarefa).}
+\label{tab:significancia_stress}
+\begin{tabular}{llrrrrr}
+\toprule
+Heurística & Cenário & \textit{Hops} & \textit{Cross-srv} & \textit{Cross-rack} & \textit{Cross-grp} & Custo \\
+\midrule
+EASY & \textit{Balanced} & 21,39\% & 16,90\% & 24,56\% & 27,68\% & 21,82\% \\
+ & \textit{Rack Strict} & 19,83\% & 12,74\% & 29,48\% & 30,09\% & 20,12\% \\
+ & \textit{Group Strict} & 15,97\% & 9,02\% & 19,35\% & 38,51\% & 16,08\% \\
+ & \textit{Comm Cost Strict} & 22,14\% & 15,38\% & 23,86\% & 24,52\% & 23,29\% \\
+\addlinespace
+HEFT & \textit{Balanced} & 7,08\% & -0,27\% & 13,42\% & 17,54\% & 7,28\% \\
+ & \textit{Rack Strict} & 6,21\% & -3,37\% & 17,21\% & 19,54\% & 6,34\% \\
+ & \textit{Group Strict} & 3,62\% & -5,13\% & 10,55\% & 22,70\% & 3,61\% \\
+ & \textit{Comm Cost Strict} & 10,78\% & -0,69\% & 16,88\% & 17,79\% & 11,08\% \\
+\addlinespace
+CPOP & \textit{Balanced} & 18,74\% & 14,56\% & 22,11\% & 23,05\% & 19,21\% \\
+ & \textit{Rack Strict} & 17,25\% & 9,90\% & 27,04\% & 25,72\% & 17,54\% \\
+ & \textit{Group Strict} & 11,92\% & 5,22\% & 15,68\% & 31,22\% & 12,24\% \\
+ & \textit{Comm Cost Strict} & 19,67\% & 12,26\% & 21,35\% & 21,55\% & 20,46\% \\
+\addlinespace
+PEFT & \textit{Balanced} & 5,86\% & -0,87\% & 11,86\% & 14,94\% & 5,87\% \\
+ & \textit{Rack Strict} & 5,30\% & -3,02\% & 15,29\% & 17,12\% & 5,39\% \\
+ & \textit{Group Strict} & 3,75\% & -4,71\% & 10,43\% & 22,59\% & 3,77\% \\
+ & \textit{Comm Cost Strict} & 8,36\% & -1,27\% & 13,44\% & 15,14\% & 8,71\% \\
+\addlinespace
+\bottomrule
+\end{tabular}
+\end{table}
 
+Os resultados (Tabela~\ref{tab:significancia_stress}) indicam que a aplicação da política com consciência da rede mantém resultados consistentes.
+%
+Observa-se, entretanto, que algumas configurações podem apresentar aumento na métrica de fluxos entre servidores. 
+%
+Esse comportamento não invalida a proposta, pois representa um efeito de compensação: ao priorizar a redução de comunicações entre \textit{racks} ou entre grupos, o escalonador pode concentrar tarefas em regiões topologicamente mais próximas, aumentando comunicações locais entre servidores. 
+%
+Assim, a análise deve considerar o conjunto das métricas, especialmente aquelas que representam deslocamentos mais custosos na topologia.
+
+De forma geral, os testes estatísticos reforçam que os ganhos obtidos não decorrem apenas de variações pontuais ou de poucos casos isolados. 
+%
+Ao contrário, os resultados indicam que a política proposta promove alterações sistemáticas no padrão de escalonamento das tarefas, reduzindo o impacto lógico das comunicações na rede sem alterar a semântica dos DAGs nem substituir as heurísticas tradicionais de escalonamento.
 
 %------------------------------------------------
 \subsection{Discussão comparativa}
 \label{subsec:discussao_comparativa}
 
-Por fim, são destacados os pontos fortes e as limitações observadas ao aplicar a consciência de rede em cada heurística, considerando métricas de comunicação como hops, fluxos entre servidores, racks e grupos, e custo estimado de comunicação, sem impacto no \textit{makespan}, conforme apresentados na Tabela~\ref{tab:heuristicas_com_network}.
+Esta análise evidencia que, embora as heurísticas se beneficiem da política \textit{network-aware}, cada uma possui pontos fortes e limitações inerentes à sua lógica de escalonamento (Tabela~\ref{tab:heuristicas_com_network}). 
+%
+A possibilidade de priorizar métricas específicas confere flexibilidade à abordagem para atender diferentes objetivos operacionais.
+%
+De forma geral, a proposta aproxima o processo de escalonamento das características reais da infraestrutura de rede, permitindo que decisões considerem não apenas disponibilidade computacional e precedência entre tarefas, mas também o impacto topológico das comunicações geradas durante a execução dos \textit{workflows}. 
 
 \begin{table}[h!]
 \scriptsize
 \centering
 \caption{Resumo qualitativo das heurísticas combinadas com a política \textit{network-aware}.}
 \label{tab:heuristicas_com_network}
-\begin{tabular}{l p{6.5cm} p{6.5cm}}
+\begin{tabular}{l p{5cm} p{7.5cm}}
 \toprule
 \textbf{Heurística} & \textbf{Pontos Fortes} & \textbf{Limitações / Observações} \\
 \midrule
-EASY & {\raggedright Simplicidade de implementação; maiores ganhos relativos entre as heurísticas, com melhorias consistentes em todas as métricas nos dois cenários} & {\raggedright Política base gera mais comunicação, o que amplia a margem de melhoria da camada \textit{network-aware}} \\
+EASY & {\raggedright Simplicidade de implementação; maiores ganhos relativos entre as heurísticas, com melhorias consistentes em todas as métricas.} & {\raggedright Política base gera mais comunicação, o que amplia a margem de melhoria da consciência da rede.} \\
 \midrule
-HEFT & {\raggedright Reduz significativamente hops e custo de comunicação, com destaque no cenário normal (redução de até 93,55\% em Cross-Rack flows); bom para workflows heterogêneos} & {\raggedright Algoritmo mais complexo; no cenário \textit{stressed}, pode aumentar fluxos locais entre servidores (efeito de compensação)} \\
+HEFT & {\raggedright Reduz significativamente saltos e custo de comunicação com desempenho superior em \textit{workflows} heterogêneos.} & {\raggedright Algoritmo complexo; Pode aumentar fluxos locais entre servidores (efeito de compensação).} \\
 \midrule
-CPOP & {\raggedright Mantém tarefas críticas próximas; redução significativa em Cross-Rack flows e ganhos consistentes sob alta concorrência} & {\raggedright Sensível à parametrização de candidatos; overhead maior para workflows grandes} \\
+CPOP & {\raggedright Mantém tarefas críticas próximas com redução significativa em \textit{cross-rack flows} e ganhos consistentes sob alta concorrência} & {\raggedright Sensível à parametrização de candidatos; sobrecarga maior para \textit{workflows} com várias tarefas.} \\
 \midrule
-PEFT & {\raggedright Alocação base já eficiente em comunicação; melhora consistente em todos os cenários avaliados} & {\raggedright Menor ganho relativo entre as heurísticas, pois a política base já explora localidade; também sujeita ao efeito de compensação em fluxos entre servidores} \\
+PEFT & {\raggedright Alocação base já eficiente em comunicação.} & {\raggedright Menor ganho relativo entre as heurísticas, pois a política base já explora localidade; também sujeita ao efeito de compensação em fluxos entre servidores.} \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-Esta análise evidencia que, embora todas as heurísticas se beneficiem da política \textit{network-aware}, cada uma possui pontos fortes específicos e limitações inerentes à sua lógica de escalonamento. Essa tabela auxilia a selecionar heurísticas adequadas conforme o objetivo da otimização, seja reduzir saltos, priorizar fluxos críticos ou balancear o custo de comunicação de maneira geral.
-
-A política \textit{network-aware} demonstrou capacidade de reduzir custos lógicos de comunicação em diferentes heurísticas, cenários de carga e configurações de pesos. 
-%
-Além disso, a possibilidade de priorizar métricas específicas, como comunicação entre \textit{racks}, comunicação entre grupos ou custo global de comunicação, confere flexibilidade à abordagem para atender diferentes objetivos operacionais.
-
-De forma geral, a proposta aproxima o processo de escalonamento das características reais da infraestrutura de rede, permitindo que decisões de alocação considerem não apenas disponibilidade computacional e precedência entre tarefas, mas também o impacto topológico das comunicações geradas durante a execução dos \textit{workflows}. 
-
-
-
-
-
-\subsection{Análise de significância estatística}
-\label{sec:significancia_estatistica}
-
-Complementarmente à análise comparativa apresentada anteriormente, foi realizada uma avaliação de significância estatística com o objetivo de verificar se as diferenças observadas entre as execuções originais e as execuções com a política \textit{network-aware} representam melhorias sistemáticas no comportamento das tarefas. Essa etapa é importante porque permite distinguir reduções consistentes de variações pontuais associadas a tarefas específicas.
-
-Para isso, as tarefas das execuções foram pareadas por meio dos identificadores \textit{job\_id} e \textit{task\_id}, permitindo comparar, tarefa a tarefa, o comportamento da heurística original com sua respectiva versão \textit{network-aware}. Foram avaliadas as métricas de número de saltos de rede (\textit{hops}), fluxos entre servidores, fluxos entre \textit{racks}, fluxos entre grupos e custo estimado de comunicação.
-
-Inicialmente, a distribuição das diferenças foi avaliada por meio do teste de Shapiro-Wilk. Quando a hipótese de normalidade foi satisfeita, aplicou-se o teste t pareado. Nos casos em que a distribuição não apresentou normalidade, utilizou-se o teste não paramétrico de Wilcoxon para amostras pareadas. Em ambos os casos, adotou-se nível de significância de 5\% ($p < 0{,}05$). Além disso, foi calculado o tamanho do efeito, utilizando o coeficiente de Cohen ($d$) para o teste t pareado e o coeficiente $r = Z/\sqrt{n}$ para o teste de Wilcoxon. Nas tabelas, o símbolo (*) indica resultados estatisticamente significativos.
-
-\begin{table}[h]
-\centering
-\small
-\caption{Significância estatística (baseline vs.\ network-aware, por tarefa) no cenário normal.}
-\label{tab:significancia_normal}
-\begin{tabular}{llrrrrr}
-\toprule
-Heurística & Cenário & Hops & Cross-srv & Cross-rack & Cross-grp & Custo \\
-\midrule
-EASY & Balanced & 29,73\%$^{*}$ & 29,30\%$^{*}$ & 57,58\%$^{*}$ & -- & 31,40\%$^{*}$ \\
-EASY & Rack Strict & 29,63\%$^{*}$ & 29,20\%$^{*}$ & 57,58\%$^{*}$ & -- & 31,35\%$^{*}$ \\
-EASY & Group Strict & 29,63\%$^{*}$ & 29,20\%$^{*}$ & 57,58\%$^{*}$ & -- & 31,35\%$^{*}$ \\
-EASY & Comm Cost Strict & 29,31\%$^{*}$ & 28,92\%$^{*}$ & 54,55\%$^{*}$ & -- & 31,57\%$^{*}$ \\
-\addlinespace
-HEFT & Balanced & 32,59\%$^{*}$ & 21,04\%$^{*}$ & 93,05\%$^{*}$ & -- & 32,47\%$^{*}$ \\
-HEFT & Rack Strict & 32,51\%$^{*}$ & 20,85\%$^{*}$ & 93,55\%$^{*}$ & -- & 32,46\%$^{*}$ \\
-HEFT & Group Strict & 32,51\%$^{*}$ & 20,95\%$^{*}$ & 93,05\%$^{*}$ & -- & 32,55\%$^{*}$ \\
-HEFT & Comm Cost Strict & 32,51\%$^{*}$ & 20,95\%$^{*}$ & 93,05\%$^{*}$ & -- & 32,61\%$^{*}$ \\
-\addlinespace
-CPOP & Balanced & 23,08\%$^{*}$ & 23,30\%$^{*}$ & 4,35\% & -- & 23,54\%$^{*}$ \\
-CPOP & Rack Strict & 22,99\%$^{*}$ & 23,10\%$^{*}$ & 13,04\% & -- & 23,49\%$^{*}$ \\
-CPOP & Group Strict & 22,99\%$^{*}$ & 23,10\%$^{*}$ & 13,04\% & -- & 23,49\%$^{*}$ \\
-CPOP & Comm Cost Strict & 23,08\%$^{*}$ & 23,30\%$^{*}$ & 4,35\% & -- & 23,72\%$^{*}$ \\
-\addlinespace
-PEFT & Balanced & 20,77\%$^{*}$ & 21,04\%$^{*}$ & 0,00\% & -- & 21,04\%$^{*}$ \\
-PEFT & Rack Strict & 20,67\%$^{*}$ & 20,85\%$^{*}$ & 7,14\% & -- & 21,03\%$^{*}$ \\
-PEFT & Group Strict & 20,67\%$^{*}$ & 20,85\%$^{*}$ & 7,14\% & -- & 21,03\%$^{*}$ \\
-PEFT & Comm Cost Strict & 20,67\%$^{*}$ & 20,95\%$^{*}$ & 0,00\% & -- & 21,21\%$^{*}$ \\
-\addlinespace
-\bottomrule
-\end{tabular}
-
-\vspace{2mm}
-\footnotesize Ganho médio percentual por tarefa (baseline vs.\ network-aware). $^{*}$ indica significância estatística ($p<0{,}05$): a normalidade das diferenças foi avaliada via Shapiro-Wilk, com teste $t$ pareado quando normal e Wilcoxon signed-rank caso contrário. ``--'' indica dados insuficientes (nenhuma diferença entre as execuções ou menos de 3 pares de tarefas válidos).
-\end{table}
-
-
-\begin{table}[h]
-\centering
-\small
-\caption{Significância estatística (baseline vs.\ network-aware, por tarefa) no cenário stress.}
-\label{tab:significancia_stress}
-\begin{tabular}{llrrrrr}
-\toprule
-Heurística & Cenário & Hops & Cross-srv & Cross-rack & Cross-grp & Custo \\
-\midrule
-EASY & Balanced & 21,39\%$^{*}$ & 16,90\%$^{*}$ & 24,56\%$^{*}$ & 27,68\%$^{*}$ & 21,82\%$^{*}$ \\
-EASY & Rack Strict & 19,83\%$^{*}$ & 12,74\%$^{*}$ & 29,48\%$^{*}$ & 30,09\%$^{*}$ & 20,12\%$^{*}$ \\
-EASY & Group Strict & 15,97\%$^{*}$ & 9,02\%$^{*}$ & 19,35\%$^{*}$ & 38,51\%$^{*}$ & 16,08\%$^{*}$ \\
-EASY & Comm Cost Strict & 22,14\%$^{*}$ & 15,38\%$^{*}$ & 23,86\%$^{*}$ & 24,52\%$^{*}$ & 23,29\%$^{*}$ \\
-\addlinespace
-HEFT & Balanced & 7,08\%$^{*}$ & -0,27\% & 13,42\%$^{*}$ & 17,54\%$^{*}$ & 7,28\%$^{*}$ \\
-HEFT & Rack Strict & 6,21\%$^{*}$ & -3,37\%$^{*}$ & 17,21\%$^{*}$ & 19,54\%$^{*}$ & 6,34\%$^{*}$ \\
-HEFT & Group Strict & 3,62\%$^{*}$ & -5,13\%$^{*}$ & 10,55\%$^{*}$ & 22,70\%$^{*}$ & 3,61\%$^{*}$ \\
-HEFT & Comm Cost Strict & 10,78\%$^{*}$ & -0,69\%$^{*}$ & 16,88\%$^{*}$ & 17,79\%$^{*}$ & 11,08\%$^{*}$ \\
-\addlinespace
-CPOP & Balanced & 18,74\%$^{*}$ & 14,56\%$^{*}$ & 22,11\%$^{*}$ & 23,05\%$^{*}$ & 19,21\%$^{*}$ \\
-CPOP & Rack Strict & 17,25\%$^{*}$ & 9,90\%$^{*}$ & 27,04\%$^{*}$ & 25,72\%$^{*}$ & 17,54\%$^{*}$ \\
-CPOP & Group Strict & 11,92\%$^{*}$ & 5,22\%$^{*}$ & 15,68\%$^{*}$ & 31,22\%$^{*}$ & 12,24\%$^{*}$ \\
-CPOP & Comm Cost Strict & 19,67\%$^{*}$ & 12,26\%$^{*}$ & 21,35\%$^{*}$ & 21,55\%$^{*}$ & 20,46\%$^{*}$ \\
-\addlinespace
-PEFT & Balanced & 5,86\%$^{*}$ & -0,87\%$^{*}$ & 11,86\%$^{*}$ & 14,94\%$^{*}$ & 5,87\%$^{*}$ \\
-PEFT & Rack Strict & 5,30\%$^{*}$ & -3,02\%$^{*}$ & 15,29\%$^{*}$ & 17,12\%$^{*}$ & 5,39\%$^{*}$ \\
-PEFT & Group Strict & 3,75\%$^{*}$ & -4,71\%$^{*}$ & 10,43\%$^{*}$ & 22,59\%$^{*}$ & 3,77\%$^{*}$ \\
-PEFT & Comm Cost Strict & 8,36\%$^{*}$ & -1,27\%$^{*}$ & 13,44\%$^{*}$ & 15,14\%$^{*}$ & 8,71\%$^{*}$ \\
-\addlinespace
-\bottomrule
-\end{tabular}
-
-\vspace{2mm}
-\footnotesize Ganho médio percentual por tarefa (baseline vs.\ network-aware). $^{*}$ indica significância estatística ($p<0{,}05$): a normalidade das diferenças foi avaliada via Shapiro-Wilk, com teste $t$ pareado quando normal e Wilcoxon signed-rank caso contrário. ``--'' indica dados insuficientes (nenhuma diferença entre as execuções ou menos de 3 pares de tarefas válidos).
-\end{table}
-
-
-A Tabela~\ref{tab:significancia_normal} apresenta os resultados obtidos para o cenário normal. De modo geral, observa-se que a política \textit{network-aware} produziu reduções estatisticamente significativas nas métricas diretamente associadas ao custo de comunicação, especialmente em \textit{hops}, comunicação entre \textit{racks}, comunicação entre grupos e custo estimado de comunicação. Esse resultado indica que, mesmo em um cenário com maior disponibilidade relativa de recursos computacionais, a incorporação de critérios topológicos contribui para aproximar tarefas dependentes e reduzir o custo lógico das comunicações.
-
-A Tabela~\ref{tab:significancia_stress} apresenta os resultados para o cenário de stress. Nesse caso, a significância estatística das reduções torna-se ainda mais relevante, pois o ambiente possui maior concorrência por recursos e menor disponibilidade de servidores. Os resultados indicam que a política proposta mantém ganhos consistentes mesmo sob maior pressão de carga, reforçando sua aplicabilidade em cenários nos quais a escolha do posicionamento das tarefas exerce maior influência sobre a infraestrutura de rede.
-
-Observa-se, entretanto, que algumas configurações podem apresentar aumento na métrica de fluxos entre servidores. Esse comportamento não invalida a proposta, pois representa um efeito de compensação: ao priorizar a redução de comunicações entre \textit{racks} ou entre grupos, o escalonador pode concentrar tarefas em regiões topologicamente mais próximas, aumentando comunicações locais entre servidores. Assim, a análise deve considerar o conjunto das métricas, especialmente aquelas que representam deslocamentos mais custosos na topologia.
-
-De forma geral, os testes estatísticos reforçam que os ganhos obtidos não decorrem apenas de variações pontuais ou de poucos casos isolados. Ao contrário, os resultados indicam que a política \textit{network-aware} promove alterações sistemáticas no padrão de alocação das tarefas, reduzindo o impacto lógico das comunicações na rede sem alterar a semântica dos DAGs nem substituir as heurísticas tradicionais de escalonamento.
-
-
-
 
 
 \section{Conclusão}
 \label{sec:conclusao}
 
-Este trabalho apresentou um escalonador de workflows consciente da rede, desenvolvido com o objetivo de reduzir custos lógicos de comunicação em ambientes de nuvem privada. A proposta atua como uma camada complementar sobre políticas tradicionais de escalonamento, incluindo heurísticas clássicas como EASY, HEFT, CPOP e PEFT, preservando suas estratégias de ordenação, mas incorporando critérios topológicos no processo de alocação das tarefas.
+Este trabalho apresentou uma política de escalonamento de \textit{workflows} consciente da rede. 
+%
+A proposta atua de forma complementar sobre políticas tradicionais de escalonamento.
+%
+As simulações avaliaram quatro heurísticas base (EASY, HEFT, CPOP e PEFT), combinadas com diferentes configurações da política com consciência da rede, variando os pesos atribuídos às métricas de comunicação.
+%
+Os resultados obtidos indicam que a incorporação de consciência de rede no processo de escalonamento melhora consistentemente o perfil de comunicação dos \textit{workflows}, independentemente da heurística base utilizada. 
+%
+Em todos os cenários avaliados, observou-se redução em métricas como número de saltos, fluxos entre servidores, fluxos entre \textit{racks}, fluxos entre grupos e custo estimado de comunicação, sem alteração significativa no comportamento global de execução dos \textit{workflows}.
+%
+Dessa forma, a política proposta aproxima o processo de orquestração das características reais da infraestrutura de comunicação, mantendo compatibilidade com políticas tradicionais e permitindo sua extensão para diferentes estratégias de decisão.
 
-A abordagem foi implementada em um simulador de eventos discretos desenvolvido em Python, utilizando workloads compostos por DAGs e uma topologia Dragonfly para representar a infraestrutura de execução. A partir das dependências entre tarefas, cada workflow foi modelado como um grafo acíclico direcionado, permitindo que o simulador respeitasse restrições de precedência e avaliasse diferentes decisões de posicionamento nos servidores disponíveis.
-
-A avaliação experimental considerou dois cenários distintos: um cenário com maior disponibilidade relativa de recursos computacionais e outro com alta concorrência por recursos, representando diferentes níveis de pressão sobre a infraestrutura. Em ambos os cenários, foram avaliadas quatro heurísticas base (EASY, HEFT, CPOP e PEFT), combinadas com diferentes configurações da política \textit{network-aware}, variando os pesos atribuídos às métricas de comunicação.
-
-Os resultados obtidos indicam que a incorporação de consciência de rede no processo de escalonamento melhora consistentemente o perfil de comunicação dos workflows, independentemente da heurística base utilizada. Em todos os cenários avaliados, observou-se redução em métricas como número de saltos, fluxos entre servidores, fluxos entre racks, fluxos entre grupos e custo estimado de comunicação, sem alteração significativa no comportamento global de execução dos workflows.
-
-Esse resultado indica que a melhoria obtida está associada principalmente à melhor localidade das tarefas dependentes, reduzindo comunicações desnecessárias na topologia e diminuindo a pressão sobre enlaces intermediários da rede. Além disso, verificou-se que diferentes configurações de pesos influenciam diretamente o tipo de otimização obtida, permitindo priorizar reduções em comunicação entre racks, entre grupos ou no custo global de comunicação.
-
-A principal contribuição deste trabalho está na demonstração de que heurísticas clássicas de escalonamento podem ser estendidas de forma modular para incorporar consciência de rede, sem alterar a semântica dos workflows nem as relações de dependência dos DAGs. Dessa forma, o escalonador proposto aproxima o processo de orquestração das características reais da infraestrutura de comunicação, mantendo compatibilidade com políticas tradicionais e permitindo sua extensão para diferentes estratégias de decisão.
-
-Como trabalhos futuros, pretende-se avaliar a proposta em ambientes distribuídos reais, incorporar medições efetivas de latência, largura de banda e ocupação de enlaces, bem como explorar mecanismos automáticos para ajuste dinâmico dos pesos das métricas de rede. Também se pretende investigar a aplicação da abordagem em outras topologias de data center e compará-la com políticas adicionais de escalonamento, ampliando a análise sobre sua generalização e aplicabilidade.
-
-% \section*{Automação de tarefas com auxílio do inteligência artificial generativa}
-% \label{sec:ia}
-
-% \textcolor{red}{Elenque como a IA generativa foi usada no trabalho. Quando terminar de explicar, como autor principal, assuma total responsabilidade sobre implementação, dados e análise.}
+Como trabalhos futuros, pretende-se incorporar medições efetivas de latência, \textit{buffers}, largura de banda e ocupação de enlaces, bem como explorar mecanismos automáticos para ajuste dinâmico dos pesos das métricas de rede. 
 
 \section*{Agradecimentos}
 Este trabalho recebeu apoio financeiro do Conselho Nacional de Desenvolvimento Científico e Tecnológico (CNPq), FAPESC e foi desenvolvido no LabP2D.
