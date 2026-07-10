@@ -468,7 +468,7 @@ Para todas as métricas de comunicação, valores menores indicam melhor desempe
 \section{Resultados e discussão}
 \label{sec:resultados_discussao}
 
-Inicialmente, os resultados são apresentados de forma consolidada por heurística, utilizando gráficos agrupados que incluem as quatro configurações de pesos da política \textit{network-aware}.
+Inicialmente, os resultados são apresentados de forma consolidada por heurística, utilizando \textit{boxplots} agrupados que incluem as quatro configurações de pesos da política \textit{network-aware}.
 %
 Em seguida, são feitas análises numéricas baseadas nos resumos consolidados, destacando melhorias quantitativas, comparações entre heurísticas e a influência de diferentes parametrizações da política.
 %
@@ -479,7 +479,13 @@ Esta abordagem permite uma visão integrada do desempenho do escalonador, eviden
 \label{subsec:resultados_consolidados}
 
 
-As Figuras~\ref{fig:easy_stressed}-\ref{fig:peft_stressed} apresentam os gráficos consolidados por heurística no cenário \textit{stressed}. Cada coluna da imagem representa uma configuração de peso da política \textit{network-aware} (\textit{baseline}, \textit{balanced}, \textit{rack strict}, \textit{group strict}, \textit{comm cost strict}), e valores positivos indicam melhoria em relação à execução de referência (\textit{baseline}).
+As Figuras~\ref{fig:easy_stressed}-\ref{fig:peft_stressed} apresentam os resultados consolidados por heurística no cenário \textit{stressed}, na forma de \textit{boxplots} da distribuição do ganho percentual por tarefa em relação à execução de referência (\textit{baseline}).
+%
+Para cada métrica do eixo horizontal, há uma caixa por configuração de pesos da política \textit{network-aware} (\textit{balanced}, \textit{rack strict}, \textit{group strict}, \textit{comm cost strict}): a caixa delimita o intervalo interquartil da distribuição, a linha central indica a mediana e as hastes se estendem até 1,5 vez o intervalo interquartil, com \textit{outliers} omitidos para facilitar a leitura.
+%
+Valores positivos indicam tarefas que melhoraram em relação ao \textit{baseline}, e valores negativos, tarefas que pioraram.
+%
+Como as métricas são contagens discretas por tarefa (por exemplo, número de fluxos entre \textit{racks}), os ganhos assumem valores quantizados, o que explica hastes alcançando patamares como $-100\%$: uma minoria de tarefas piora quando o escalonador reorganiza o posicionamento, embora a mediana e o intervalo interquartil permaneçam em ganho neutro ou positivo e o ganho médio por tarefa seja positivo e estatisticamente significativo, conforme detalhado na Seção~\ref{sec:significancia_estatistica}.
 
 
 \begin{figure*}[htbp]
@@ -511,42 +517,11 @@ As Figuras~\ref{fig:easy_stressed}-\ref{fig:peft_stressed} apresentam os gráfic
 \end{minipage}
 \end{figure*}
 
-A análise dos resultados no cenário \textit{stressed} mostra que o número total de saltos (\textit{hops}) foi reduzido em 32,6\%, sendo este o destaque da heurística PEFT na configuração \textit{comm cost strict}. Os fluxos entre servidores apresentaram diminuição variando de 1,27\% a 29,3\%, com maior impacto observado nas heurísticas EASY e CPOP. Quanto aos fluxos entre racks, a redução variou de 4,35\% a 93,55\%, principalmente na configuração \textit{rack strict}, enquanto os fluxos entre grupos distintos apresentaram diminuições de até 24,52\%, destacando-se CPOP e PEFT na configuração \textit{group strict}. O custo estimado de comunicação apresentou queda de 8,71\% a 31,57\%, indicando que a política \textit{network-aware} conseguiu otimizar o posicionamento das tarefas e reduzir o tráfego lógico sobre a topologia.
+A análise dos resultados no cenário \textit{stressed} mostra ganho médio por tarefa no número total de saltos (\textit{hops}) variando de 3,62\% a 22,14\%, com destaque para a heurística EASY na configuração \textit{comm cost strict}. Os fluxos entre \textit{racks} apresentaram reduções médias de 10,43\% a 29,48\%, com maior efeito na configuração \textit{rack strict}, enquanto os fluxos entre grupos distintos diminuíram, em média, até 38,51\%, destacando-se EASY e CPOP na configuração \textit{group strict}. O custo estimado de comunicação apresentou queda média de 3,61\% a 23,29\%. Já os fluxos entre servidores melhoraram, em média, até 16,90\% nas heurísticas EASY e CPOP, mas apresentaram piora média de até 5,13\% em HEFT e PEFT, um efeito de compensação: ao aproximar tarefas dependentes para reduzir deslocamentos mais custosos na topologia, o escalonador aumenta comunicações locais entre servidores. Esses valores correspondem às médias das distribuições apresentadas nas figuras e indicam que a política \textit{network-aware} conseguiu otimizar o posicionamento das tarefas e reduzir o tráfego lógico sobre a topologia.
 
-No cenário \textit{normal}, a maior disponibilidade de recursos contribuiu para aumentar a eficiência das heurísticas base. Apesar disso, a política \textit{network-aware} manteve melhorias consistentes em todas as métricas de comunicação, confirmando a robustez da abordagem mesmo em ambientes menos pressionados. As Figuras~\ref{fig:easy_normal}-\ref{fig:peft_normal} apresentam os gráficos consolidados, evidenciando os mesmos padrões de redução de hops, fluxos e custo de comunicação observados no cenário \textit{stressed}.
+No cenário \textit{normal}, com maior disponibilidade relativa de recursos, a política \textit{network-aware} também apresentou melhorias consistentes em relação à execução sem consciência de rede, confirmando a robustez da abordagem mesmo em ambientes menos pressionados. O ganho médio por tarefa variou de 20,67\% a 32,59\% no número total de saltos (\textit{hops}), de 20,85\% a 29,30\% nos fluxos entre servidores — sem o efeito de compensação observado no cenário \textit{stressed} — e de 21,03\% a 32,61\% no custo estimado de comunicação, com reduções de até 93,55\% nos fluxos entre \textit{racks} para HEFT na configuração \textit{rack strict}, conforme detalhado na Tabela~\ref{tab:significancia_normal}. Nesse cenário, os fluxos entre grupos praticamente não ocorrem, dada a folga de recursos na topologia. Por concisão, os \textit{boxplots} consolidados são apresentados apenas para o cenário \textit{stressed}.
 
-\begin{figure*}[htbp]
-\centering
-\begin{minipage}{0.48\textwidth}
-\includegraphics[width=\linewidth]{images/easy_normal_grouped_chart.png}
-\caption{EASY - Normal}
-\label{fig:easy_normal}
-\end{minipage}
-\hfill
-\begin{minipage}{0.48\textwidth}
-\includegraphics[width=\linewidth]{images/heft_normal_grouped_chart.png}
-\caption{HEFT - Normal}
-\label{fig:heft_normal}
-\end{minipage}
-
-\vspace{0.3cm}
-
-\begin{minipage}{0.48\textwidth}
-\includegraphics[width=\linewidth]{images/cpop_normal_grouped_chart.png}
-\caption{CPOP - Normal}
-\label{fig:cpop_normal}
-\end{minipage}
-\hfill
-\begin{minipage}{0.48\textwidth}
-\includegraphics[width=\linewidth]{images/peft_normal_grouped_chart.png}
-\caption{PEFT - Normal}
-\label{fig:peft_normal}
-\end{minipage}
-\end{figure*}
-
-As principais observações mostram que o número total de saltos (\textit{hops}) variou entre 23,08\% e 32,55\%. Os fluxos entre servidores diminuíram de 1,27\% a 29,3\%, com maior impacto observado nas heurísticas EASY e CPOP. Quanto aos fluxos entre racks, a redução foi significativa, chegando a 57,58\% na configuração \textit{rack strict} para EASY. Os fluxos entre grupos distintos diminuíram até 23,72\%, destacando CPOP e PEFT na configuração \textit{group strict}. O custo estimado de comunicação apresentou diminuição de 21,03\% a 31,57\%.
-
-De forma geral, todas as heurísticas analisadas apresentaram melhorias consistentes em métricas de comunicação, sem impacto sobre o \textit{makespan}. Configurações específicas, como \textit{rack strict}, \textit{group strict} e \textit{comm cost strict}, permitiram priorizar tipos específicos de fluxo na topologia. O uso de histórico contribuiu para aumentar a localidade das tarefas, reduzindo hops e custos de comunicação. Mesmo heurísticas mais simples, como EASY e CPOP, apresentaram ganhos comparáveis a HEFT e PEFT, reforçando a modularidade e flexibilidade do escalonador.
+De forma geral, todas as heurísticas analisadas apresentaram melhorias consistentes em métricas de comunicação, sem impacto sobre o \textit{makespan}. Configurações específicas, como \textit{rack strict}, \textit{group strict} e \textit{comm cost strict}, permitiram priorizar tipos específicos de fluxo na topologia. O uso de histórico contribuiu para aumentar a localidade das tarefas, reduzindo hops e custos de comunicação. Mesmo heurísticas mais simples, como EASY e CPOP, apresentaram ganhos iguais ou superiores aos de HEFT e PEFT, reforçando a modularidade e flexibilidade do escalonador.
 
 Em resumo, os resultados quantitativos reforçam a capacidade da política \textit{network-aware} de reduzir congestionamento lógico e melhorar a eficiência de comunicação em workflows distribuídos, tanto em cenários de alta pressão (\textit{stressed}) quanto em cenários com maior disponibilidade de recursos (\textit{normal}).
 
@@ -566,13 +541,13 @@ Por fim, são destacados os pontos fortes e as limitações observadas ao aplica
 \toprule
 \textbf{Heurística} & \textbf{Pontos Fortes} & \textbf{Limitações / Observações} \\
 \midrule
-EASY & {\raggedright Simplicidade de implementação; melhorias consistentes em Cross-Rack e Cross-Group flows; bons resultados em cenários de baixa pressão} & {\raggedright Redução menor em fluxos intra-servidor; menos eficiente em cenários muito concorridos} \\
+EASY & {\raggedright Simplicidade de implementação; maiores ganhos relativos entre as heurísticas, com melhorias consistentes em todas as métricas nos dois cenários} & {\raggedright Política base gera mais comunicação, o que amplia a margem de melhoria da camada \textit{network-aware}} \\
 \midrule
-HEFT & {\raggedright Reduz significativamente hops e custo de comunicação; bom para workflows heterogêneos} & {\raggedright Algoritmo mais complexo; ganhos marginais em cenários de alta concorrência comparado a PEFT} \\
+HEFT & {\raggedright Reduz significativamente hops e custo de comunicação, com destaque no cenário normal (redução de até 93,55\% em Cross-Rack flows); bom para workflows heterogêneos} & {\raggedright Algoritmo mais complexo; no cenário \textit{stressed}, pode aumentar fluxos locais entre servidores (efeito de compensação)} \\
 \midrule
-CPOP & {\raggedright Mantém tarefas críticas próximas; redução significativa em Cross-Rack flows} & {\raggedright Sensível à parametrização de candidatos; overhead maior para workflows grandes} \\
+CPOP & {\raggedright Mantém tarefas críticas próximas; redução significativa em Cross-Rack flows e ganhos consistentes sob alta concorrência} & {\raggedright Sensível à parametrização de candidatos; overhead maior para workflows grandes} \\
 \midrule
-PEFT & {\raggedright Maior redução total de hops e custo de comunicação; melhora consistente em todos os cenários} & {\raggedright Implementação mais complexa; menor ganho relativo em tarefas de curta duração} \\
+PEFT & {\raggedright Alocação base já eficiente em comunicação; melhora consistente em todos os cenários avaliados} & {\raggedright Menor ganho relativo entre as heurísticas, pois a política base já explora localidade; também sujeita ao efeito de compensação em fluxos entre servidores} \\
 \bottomrule
 \end{tabular}
 \end{table}
