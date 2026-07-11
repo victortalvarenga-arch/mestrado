@@ -478,31 +478,38 @@ Esses valores correspondem às médias das distribuições apresentadas nas figu
     \includegraphics[width=0.48\linewidth]{images/peft_stress_grouped_chart.png}
     \label{fig:peft_stressed}
 }
-\caption{Resultados consolidados por política de base. \textcolor{red}{Diminuir a largura das figuras. Não está visível.}}
+\caption{Resultados consolidados por política de base.}
 \label{fig:politicas}
 \end{figure*}
 
 De forma geral, as heurísticas analisadas apresentaram melhorias consistentes em métricas de comunicação, sem impacto sobre o \textit{makespan} (resultados omitidos por permanecerem constantes). 
 %
-Configurações específicas, como \textit{rack strict}, \textit{group strict} e \textit{comm cost strict}, permitiram priorizar tipos específicos de fluxo na topologia. O uso de histórico contribuiu para aumentar a localidade das tarefas, reduzindo \textit{hops} e custos de comunicação. \textcolor{red}{Olhando o gráfico, não entendi como o histório ajudou. O que o histórico fez?}. 
+Configurações específicas, como \textit{rack strict}, \textit{group strict} e \textit{comm cost strict}, permitiram priorizar tipos específicos de fluxo na topologia.
+%
+O histórico de execuções, descrito na Seção~\ref{subsec:uso_historico}, contribuiu para esses ganhos de duas formas: incluiu no conjunto de candidatos o servidor utilizado pela mesma tarefa na execução anterior e ajustou a pontuação final por meio do termo $B_{hist}$ (Equação~\ref{eq:bhist}), favorecendo candidatos no mesmo \textit{rack} ou grupo que apresentaram baixo custo de comunicação anteriormente e penalizando deslocamentos que rompem essa localidade.
+%
+Na prática, o histórico preservou posicionamentos que já haviam se mostrado favoráveis e direcionou as demais tarefas para a vizinhança de seus predecessores. Seu efeito não aparece isolado na Figura~\ref{fig:politicas}, pois todas as configurações \textit{network-aware} o utilizam em conjunto com as métricas topológicas; a quantificação individual dessa contribuição exigiria uma execução \textit{network-aware} sem histórico (ablação), apontada como trabalho futuro.
+%
 %
 Mesmo heurísticas simples, como EASY e CPOP, apresentaram ganhos iguais ou superiores aos de HEFT e PEFT, reforçando a modularidade e flexibilidade da política com consciência da rede.
 
 \subsection{Análise de significância estatística}
 \label{sec:significancia_estatistica}
 
-Para distinguir melhorias consistentes de variações pontuais, a distribuição das diferenças pareadas de tarefas foi avaliada por meio do teste de Shapiro-Wilk. 
+Para verificar se as diferenças observadas representam melhorias sistemáticas, e não variações pontuais, as tarefas das execuções \textit{baseline} e \textit{network-aware} foram pareadas por identificador e as diferenças por tarefa foram submetidas a testes estatísticos pareados.
 %
-Quando a hipótese de normalidade foi satisfeita, aplicou-se o teste \textit{t} pareado. 
+A normalidade das diferenças foi avaliada pelo teste de Shapiro-Wilk e, como a hipótese de normalidade foi rejeitada em todos os casos, utilizou-se o teste não paramétrico de Wilcoxon para amostras pareadas, com nível de significância de 5\% ($p < 0{,}05$).
 %
-Nos casos em que a distribuição não apresentou normalidade, utilizou-se o teste não paramétrico de Wilcoxon. 
+A Tabela~\ref{tab:significancia_stress} reporta, para cada combinação de heurística e configuração de pesos, o ganho médio percentual por tarefa em relação à execução \textit{baseline}; os valores de $p$ não são apresentados na tabela, apenas sustentam a análise.
 %
-Em ambos os casos, adotou-se nível de significância de 5\% ($p < 0{,}05$). Além disso, foi calculado o tamanho do efeito, utilizando o coeficiente de Cohen ($d$) para o teste \textit{t} pareado e o coeficiente $r = Z/\sqrt{n}$ para o teste de Wilcoxon. \textcolor{red}{Não entendi. Qual desses valores está reportado na Tabela 2? O que a Tabela 2 mostra? O que é custo?} 
+Valores positivos indicam redução (melhora) da métrica e valores negativos indicam aumento (piora). A coluna Custo corresponde ao custo estimado de comunicação, definido na Seção~\ref{subsec:metricas_decisao}.
+%
+Todos os ganhos reportados foram estatisticamente significativos, exceto a variação de $-0{,}27\%$ nos fluxos entre servidores de HEFT na configuração \textit{balanced} ($p = 0{,}27$).
 
 \begin{table}[h]
 \centering
 \small
-\caption{Significância estatística (\textit{baseline} vs.\ \textit{network-aware}, por tarefa).}
+\caption{Ganho médio percentual por tarefa (\textit{baseline} vs.\ \textit{network-aware}) nas métricas de comunicação, no cenário \textit{stressed}.}
 \label{tab:significancia_stress}
 \begin{tabular}{llrrrrr}
 \toprule

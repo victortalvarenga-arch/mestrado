@@ -506,8 +506,10 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
 
     metricas = [
         # ("makespan", "Makespan"),
-        ("estimated_comm_cost", "Custo comunicação"),
+        # "Hops" primeiro: o rótulo longo "Custo comunicação" rotacionado na
+        # borda esquerda alargava a área total da figura.
         ("total_hops", "Hops"),
+        ("estimated_comm_cost", "Custo comunicação"),
         # ("flow_count", "Fluxos"),
         ("cross_server_flows", "Cross-server"),
         ("cross_rack_flows", "Cross-rack"),
@@ -532,7 +534,9 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
             amostras_metricas.append(samples if samples else None)
         scenario_samples[scenario_name] = amostras_metricas
 
-    fig, ax = plt.subplots(figsize=(16,8))
+    # Largura reduzida: a figura é impressa em meia coluna (~7,7 cm), então
+    # quanto menor a largura de origem, maior o tamanho efetivo das fontes.
+    fig, ax = plt.subplots(figsize=(7, 4.5))
     base_positions = list(range(len(metricas)))
     box_width = 0.18
     offsets = [-1.5*box_width, -0.5*box_width, 0.5*box_width, 1.5*box_width]
@@ -568,24 +572,12 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
     ax.axhline(0, color="black", linewidth=0.8)
     ax.set_xlim(-0.5, len(metricas) - 0.5)
 
-    # Configura fontes globais
-    plt.rcParams.update({
-        "font.size": 18,
-        "axes.titlesize": 22,
-        "axes.labelsize": 20,
-        "ytick.labelsize": 18,
-        "legend.fontsize": 22
-    })
-
-    # Ajusta fontsize do eixo X e rotaciona
-    num_labels = len(metricas)
-    fig_width = 16
-    fontsize_x = 20  # fixo maior como pediu
+    fontsize_x = 15
     ax.set_xticks(base_positions)
-    ax.set_xticklabels([label for _, label in metricas], rotation=20, ha="right", fontsize=fontsize_x)
+    ax.set_xticklabels([label for _, label in metricas], rotation=30, ha="right", fontsize=fontsize_x)
 
-    ax.set_ylabel("Ganho por tarefa (%)", fontsize=22)
-    ax.tick_params(axis="y", labelsize=22)
+    ax.set_ylabel("Ganho por tarefa (%)", fontsize=16)
+    ax.tick_params(axis="y", labelsize=15)
     ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.3)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -595,10 +587,10 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
         Patch(facecolor=scenario_colors[s], edgecolor="black", label=scenario_labels[s])
         for s in scenario_order
     ]
-    ax.legend(handles=legend_handles, ncol=4, frameon=False,
-              loc="upper center", bbox_to_anchor=(0.5,1.15), fontsize=17)
+    ax.legend(handles=legend_handles, ncol=2, frameon=False,
+              loc="lower center", bbox_to_anchor=(0.5, 1.0), fontsize=13)
 
-    plt.tight_layout(rect=[0,0,1,0.9])
+    plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
