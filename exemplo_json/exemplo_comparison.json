@@ -1,0 +1,126 @@
+{
+  "_nota_amostra": "Arquivo ilustrativo com dados fictícios. No arquivo real, 'samples' contém um valor por tarefa pareada (n=21.360 no cenário stressed); aqui foram mantidos apenas 10 valores para exemplificar a estrutura sem poluir a leitura.",
+
+  "metadata": {
+    "generated_at": "2026-01-01T10:05:00",
+    "comparison_available": true,
+    "scenario_name": "01_balanced",
+    "previous_execution_path": "outputs_experiments/stress/heft/experiment_heft_.../00_heft_baseline/heft_execution_trace_....json",
+    "current_execution_path": "outputs_experiments/stress/heft/experiment_heft_.../01_balanced/network_aware_execution_trace_....json",
+    "previous_policy": "heft",
+    "current_policy": "network_aware"
+  },
+
+  "previous_summary": {
+    "policy": "heft",
+    "network_weight": 0.0,
+    "makespan": 2416.0,
+    "jobs_count": 2,
+    "tasks_count": 4,
+    "finished_tasks": 4,
+    "traffic_events": 4,
+    "tasks_with_traffic": 3,
+    "flow_count": 3,
+    "total_hops": 9,
+    "cross_server_flows": 3,
+    "cross_rack_flows": 2,
+    "cross_group_flows": 1,
+    "estimated_comm_cost": 3.10,
+    "avg_comm_cost_per_scheduled_task": 0.775,
+    "avg_hops_per_flow": 3.0,
+    "avg_cluster_utilization": 0.87
+  },
+
+  "current_summary": {
+    "policy": "network_aware",
+    "network_weight": 1.0,
+    "makespan": 2416.0,
+    "jobs_count": 2,
+    "tasks_count": 4,
+    "finished_tasks": 4,
+    "traffic_events": 4,
+    "tasks_with_traffic": 3,
+    "flow_count": 3,
+    "total_hops": 6,
+    "cross_server_flows": 2,
+    "cross_rack_flows": 1,
+    "cross_group_flows": 0,
+    "estimated_comm_cost": 2.10,
+    "avg_comm_cost_per_scheduled_task": 0.525,
+    "avg_hops_per_flow": 2.0,
+    "avg_cluster_utilization": 0.87
+  },
+
+  "deltas": {
+    "estimated_comm_cost": {
+      "previous": 3.10,
+      "current": 2.10,
+      "absolute_delta": -1.00,
+      "percent_delta": -32.26,
+      "lower_is_better": true,
+      "improvement_absolute": 1.00,
+      "improvement_percent": 32.26,
+      "distribution": {
+        "mean_weighted": 19.21,
+        "std_weighted": 42.60,
+        "n": 10,
+        "samples": [100.0, 25.0, 0.0, 0.0, -50.0, 100.0, 0.0, 25.0, -100.0, 25.0],
+        "min": -100.0,
+        "q1": 0.0,
+        "median": 12.5,
+        "q3": 25.0,
+        "max": 100.0
+      }
+    },
+    "total_hops": {
+      "previous": 9,
+      "current": 6,
+      "absolute_delta": -3,
+      "percent_delta": -33.33,
+      "lower_is_better": true,
+      "improvement_absolute": 3,
+      "improvement_percent": 33.33,
+      "distribution": {
+        "mean_weighted": 20.50,
+        "std_weighted": 38.10,
+        "n": 10,
+        "samples": [50.0, 25.0, 0.0, 0.0, -25.0, 100.0, 0.0, 25.0, -50.0, 25.0],
+        "min": -50.0,
+        "q1": 0.0,
+        "median": 12.5,
+        "q3": 25.0,
+        "max": 100.0
+      }
+    }
+  },
+
+  "statistical_significance": {
+    "estimated_comm_cost": {
+      "metric": "estimated_comm_cost",
+      "n": 10,
+      "shapiro_statistic": 0.7643,
+      "shapiro_p_value": 0.0041,
+      "normal": false,
+      "teste_usado": "wilcoxon",
+      "estatistica_teste": 38.0,
+      "p_value": 0.0273,
+      "significativo": true,
+      "media_baseline": 0.775,
+      "media_network_aware": 0.525,
+      "ganho_percentual_medio": 19.21
+    }
+  },
+
+  "interpretation": {
+    "lower_is_better_metrics": [
+      "makespan", "traffic_events", "flow_count", "total_hops",
+      "cross_server_flows", "cross_rack_flows", "cross_group_flows",
+      "estimated_comm_cost", "avg_comm_cost_per_scheduled_task", "avg_hops_per_flow"
+    ],
+    "neutral_metrics": [
+      "finished_tasks", "avg_busy_servers", "max_busy_servers",
+      "avg_running_tasks", "avg_cluster_utilization"
+    ],
+    "reading_rule": "Para métricas lower_is_better, improvement_absolute positivo indica melhoria da execução atual em relação à anterior."
+  }
+}

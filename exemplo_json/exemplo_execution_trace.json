@@ -1,0 +1,165 @@
+{
+  "metadata": {
+    "policy": "network_aware",
+    "scheduler_policy": "network_aware",
+    "base_scheduler_policy": "heft",
+    "network_weight": 1.0,
+    "historical_network_enabled": true,
+    "historical_network_mode": "task_based",
+    "generated_at": "2026-01-01T10:00:00",
+    "network_aware_parameters": {
+      "scenario_name": "01_balanced",
+      "network_weight": 1.0,
+      "metric_weights": {
+        "cross_server": 0.25,
+        "cross_rack": 0.25,
+        "cross_group": 0.25,
+        "comm_cost": 0.25
+      },
+      "max_base_candidates": 20,
+      "max_topology_candidates_per_pred": 20,
+      "max_total_candidates": 100
+    },
+    "total_loops": 3,
+    "final_time": 3,
+    "jobs_count": 2,
+    "tasks_count": 4,
+    "topology_total_nodes": 12,
+    "topology_compute_nodes": 9,
+    "topology_router_nodes": 3
+  },
+
+  "topology_summary": {
+    "total_nodes": 12,
+    "total_edges": 14,
+    "compute_nodes_count": 9,
+    "router_nodes_count": 3,
+    "edge_type_count": { "local": 9, "intra_group": 3, "inter_group": 2 }
+  },
+
+  "workload_summary": { "jobs_count": 2, "tasks_count": 4 },
+
+  "snapshots": [
+    {
+      "loop": 0,
+      "time": 0,
+      "events": [ "jobs_liberados:[0, 1]" ],
+      "state": {
+        "active_jobs": "0,1",
+        "pending_jobs": "",
+        "ready_tasks": "(0,0),(1,0)",
+        "running_tasks": "",
+        "finished_tasks_count": 0,
+        "server_status": { "busy_count": 0, "idle_count": 9 },
+        "network_traffic": [],
+        "metrics": {
+          "traffic": {
+            "tasks_with_traffic": 0,
+            "flow_count": 0,
+            "total_hops": 0,
+            "cross_server_flows": 0,
+            "cross_rack_flows": 0,
+            "cross_group_flows": 0,
+            "estimated_comm_cost": 0
+          }
+        }
+      }
+    },
+    {
+      "loop": 1,
+      "time": 1,
+      "events": [ "tasks_escalonadas:[(0, 0, 2), (1, 0, 5)]" ],
+      "state": {
+        "active_jobs": "0,1",
+        "pending_jobs": "",
+        "ready_tasks": "",
+        "running_tasks": "(0,0),(1,0)",
+        "finished_tasks_count": 0,
+        "server_status": { "busy_count": 2, "idle_count": 7 },
+        "network_traffic": [
+          {
+            "job_id": 0,
+            "task_id": 0,
+            "server": 2,
+            "has_traffic": false,
+            "predecessor_count": 0,
+            "flows": [],
+            "total_hops": 0,
+            "cross_server_flows": 0,
+            "cross_rack_flows": 0,
+            "cross_group_flows": 0,
+            "estimated_comm_cost": 0.0
+          },
+          {
+            "job_id": 1,
+            "task_id": 0,
+            "server": 5,
+            "has_traffic": false,
+            "predecessor_count": 0,
+            "flows": [],
+            "total_hops": 0,
+            "cross_server_flows": 0,
+            "cross_rack_flows": 0,
+            "cross_group_flows": 0,
+            "estimated_comm_cost": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "loop": 2,
+      "time": 2,
+      "events": [
+        "tasks_finalizadas:[(0, 0)]",
+        "tasks_escalonadas:[(0, 1, 7)]"
+      ],
+      "state": {
+        "active_jobs": "0,1",
+        "pending_jobs": "",
+        "ready_tasks": "",
+        "running_tasks": "(0,1),(1,0)",
+        "finished_tasks_count": 1,
+        "server_status": { "busy_count": 2, "idle_count": 7 },
+        "network_traffic": [
+          {
+            "job_id": 0,
+            "task_id": 1,
+            "server": 7,
+            "has_traffic": true,
+            "predecessor_count": 1,
+            "flows": [
+              {
+                "from_task": 0,
+                "from_server": 2,
+                "to_task": 1,
+                "to_server": 7,
+                "hops": 3,
+                "payload_estimate": 0.42,
+                "cross_server": true,
+                "cross_rack": true,
+                "cross_group": false,
+                "comm_cost": 0.98
+              }
+            ],
+            "total_hops": 3,
+            "cross_server_flows": 1,
+            "cross_rack_flows": 1,
+            "cross_group_flows": 0,
+            "estimated_comm_cost": 0.98
+          }
+        ],
+        "metrics": {
+          "traffic": {
+            "tasks_with_traffic": 1,
+            "flow_count": 1,
+            "total_hops": 3,
+            "cross_server_flows": 1,
+            "cross_rack_flows": 1,
+            "cross_group_flows": 0,
+            "estimated_comm_cost": 0.98
+          }
+        }
+      }
+    }
+  ]
+}
