@@ -176,20 +176,133 @@ def flow_classification(origem, destino):
 
 
 # ------------------------------------------------------------------
-# 5) Escalonamento por lista (ready-queue) genérico
+# 5) Pontuação network-aware = a fórmula REAL de
+#    scheduler_fifo/network_aware.py (choose_server_network_aware),
+#    não a versão simplificada da Equação 1 do artigo. Parâmetros do
+#    cenário "01_balanced" (scheduler_fifo/main.py -> SCENARIOS):
+#      network_weight = 1.0
+#      metric_weights = cross_server=cross_rack=cross_group=comm_cost=0.25
 #
-# A camada network-aware NUNCA aceita um servidor com EFT pior do que
-# o melhor EFT disponível para a tarefa (tolerância ~0): o custo de
-# rede só desempata entre candidatos igualmente bons em tempo de
-# término. Isso reproduz o comportamento medido nos experimentos reais
-# do projeto (o makespan não muda com a camada de rede) e evita que o
-# exemplo ilustrativo sacrifique paralelismo/tempo por localidade —
-# o que aconteceria se custo de rede fosse somado livremente ao EFT.
+#    combined_score = fifo_score + network_weight*(network_score + B_hist)
+#    - fifo_score: posição do servidor na ordenação numérica (proxy do
+#      "base_order" da política base), normalizada por len(SERVERS).
+#    - network_score: soma ponderada das 4 métricas de tráfego,
+#      normalizadas por min-max entre os candidatos (como
+#      normalizar_metricas_candidatos).
+#    - B_hist: mesma regra da Equação~3 do artigo, usando a EXECUÇÃO
+#      BASELINE deste exemplo como histórico da execução network-aware
+#      (mesmo protocolo do Algoritmo 1: primeiro roda a política base,
+#      depois a network-aware consome esse traço).
+# ------------------------------------------------------------------
+METRIC_WEIGHTS = {"cross_server": 0.25, "cross_rack": 0.25, "cross_group": 0.25, "comm_cost": 0.25}
+NETWORK_WEIGHT = 1.0
+
+FIFO_ORDER = sorted(SERVERS)
+FIFO_POS = {s: i for i, s in enumerate(FIFO_ORDER)}
+FIFO_SIZE = len(FIFO_ORDER)
+
+
+def compute_task_metrics(dag_id, t, candidate_server, placement):
+    cross_server = cross_rack = cross_group = 0
+    comm_cost = 0.0
+    for p in preds(dag_id, t):
+        p_server = placement[(dag_id, p)]
+        cs, cr, cg = flow_classification(p_server, candidate_server)
+        cross_server += int(cs)
+        cross_rack += int(cr)
+        cross_group += int(cg)
+        comm_cost += hops_between(p_server, candidate_server) * edge_bytes(dag_id, p, t)
+    return {
+        "cross_server_flows": cross_server,
+        "cross_rack_flows": cross_rack,
+        "cross_group_flows": cross_group,
+        "estimated_comm_cost": comm_cost,
+    }
+
+
+def normalize_candidate_metrics(metrics_by_server):
+    fields = ["cross_server_flows", "cross_rack_flows", "cross_group_flows", "estimated_comm_cost"]
+    normalized = {s: {} for s in metrics_by_server}
+    for field in fields:
+        values = [metrics_by_server[s][field] for s in metrics_by_server]
+        lo, hi = min(values), max(values)
+        for s in metrics_by_server:
+            raw = metrics_by_server[s][field]
+            normalized[s][field] = 0.0 if hi == lo else (raw - lo) / (hi - lo)
+    return normalized
+
+
+def network_score(norm):
+    return (
+        norm["cross_server_flows"] * METRIC_WEIGHTS["cross_server"]
+        + norm["cross_rack_flows"] * METRIC_WEIGHTS["cross_rack"]
+        + norm["cross_group_flows"] * METRIC_WEIGHTS["cross_group"]
+        + norm["estimated_comm_cost"] * METRIC_WEIGHTS["comm_cost"]
+    )
+
+
+def build_history_from_execution(reference_placement):
+    """Histórico consumido pela execução network-aware, construído a
+    partir da execução baseline deste mesmo exemplo (Equação 3 / B_hist)."""
+    history = {}
+    for dag_id, t in ALL_TASKS:
+        p_list = preds(dag_id, t)
+        if not p_list:
+            continue
+        server = reference_placement[(dag_id, t)]
+        cross_rack = cross_group = 0
+        for p in p_list:
+            p_server = reference_placement[(dag_id, p)]
+            _, cr, cg = flow_classification(p_server, server)
+            cross_rack += int(cr)
+            cross_group += int(cg)
+        history[(dag_id, t)] = {
+            "predecessor_count": len(p_list),
+            "best_rack": RACK_OF[server],
+            "best_group": GROUP_OF[server],
+            "prev_cross_rack_flows": cross_rack,
+            "prev_cross_group_flows": cross_group,
+        }
+    return history
+
+
+def history_bonus_for(dag_id, t, candidate_server, history):
+    info = history.get((dag_id, t)) if history else None
+    if not info or info["predecessor_count"] == 0:
+        return 0.0
+
+    bonus = 0.0
+    cand_rack = RACK_OF[candidate_server]
+    cand_group = GROUP_OF[candidate_server]
+
+    if cand_group == info["best_group"]:
+        bonus -= 0.20
+        if cand_rack == info["best_rack"]:
+            bonus -= 0.10
+
+    if (info["prev_cross_rack_flows"] == 0 and info["prev_cross_group_flows"] == 0
+            and cand_group != info["best_group"]):
+        bonus += 0.25
+
+    return bonus
+
+
+# ------------------------------------------------------------------
+# 6) Escalonamento por lista (ready-queue) genérico
+#
+# A camada network-aware só escolhe entre os servidores que dão o
+# melhor EFT possível para a tarefa (tolerância ~0). O código real
+# (discrete-event, scheduler_fifo/network_aware.py) só decide entre
+# servidores JÁ ociosos no instante da decisão, então a rede nunca
+# "compra" tempo de espera; como este exemplo faz uma busca completa
+# de EFT (não é um simulador de eventos discretos), essa restrição
+# reproduz a mesma garantia por outro caminho — sem ela, o exemplo
+# poderia sacrificar paralelismo/tempo por localidade.
 # ------------------------------------------------------------------
 EFT_TOLERANCE = 1e-9
 
 
-def schedule(network_aware: bool):
+def schedule(network_aware: bool, history: dict | None = None):
     done = set()
     finish = {}
     placement = {}
@@ -216,31 +329,36 @@ def schedule(network_aware: bool):
         options = []
         for s in SERVERS:
             data_ready = 0.0
-            net_cost = 0.0
             for p in preds(dag_id, t):
                 p_server = placement[(dag_id, p)]
                 p_finish = finish[(dag_id, p)]
-                if p_server == s:
-                    transfer = 0.0
-                else:
-                    transfer = edge_bytes(dag_id, p, t) / BW
+                transfer = 0.0 if p_server == s else edge_bytes(dag_id, p, t) / BW
                 data_ready = max(data_ready, p_finish + transfer)
-
-                if p_server != s:
-                    hops = hops_between(p_server, s)
-                    net_cost += hops * edge_bytes(dag_id, p, t)
 
             start = max(server_free[s], data_ready)
             eft = start + duration(dag_id, t)
-            options.append((eft, start, net_cost, s))
+            options.append((eft, start, s))
 
         best_eft = min(o[0] for o in options)
         candidates = [o for o in options if o[0] <= best_eft + EFT_TOLERANCE]
 
         if network_aware:
-            eft, start, net_cost, s = min(candidates, key=lambda o: (o[2], o[3]))
+            metrics_by_server = {
+                o[2]: compute_task_metrics(dag_id, t, o[2], placement) for o in candidates
+            }
+            normalized = normalize_candidate_metrics(metrics_by_server)
+
+            def combined_score(o):
+                srv = o[2]
+                fifo_score = FIFO_POS[srv] / FIFO_SIZE
+                net_score = network_score(normalized[srv])
+                hist_bonus = history_bonus_for(dag_id, t, srv, history)
+                return fifo_score + NETWORK_WEIGHT * (net_score + hist_bonus)
+
+            eft, start, s = min(candidates, key=lambda o: (combined_score(o), o[2]))
         else:
-            eft, start, net_cost, s = min(candidates, key=lambda o: o[3])
+            eft, start, s = min(candidates, key=lambda o: o[2])
+
         server_free[s] = eft
         finish[(dag_id, t)] = eft
         placement[(dag_id, t)] = s
@@ -452,7 +570,8 @@ def save_single_scenario(placement, decisions, metrics, title, filename):
 
 def main():
     placement_base, decisions_base = schedule(network_aware=False)
-    placement_na, decisions_na = schedule(network_aware=True)
+    history = build_history_from_execution(placement_base)
+    placement_na, decisions_na = schedule(network_aware=True, history=history)
 
     metrics_base = compute_metrics(placement_base)
     metrics_na = compute_metrics(placement_na)
