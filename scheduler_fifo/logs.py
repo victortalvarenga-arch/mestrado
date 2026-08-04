@@ -12,7 +12,7 @@ def salvar_json_execucao(
     state: dict,
     output_path: str,
     policy: str = "easy",
-    network_weight: float = 1.0
+    lambda_base: float | None = None
 ) -> None:
     output_dir = os.path.dirname(output_path)
     if output_dir:
@@ -23,15 +23,19 @@ def salvar_json_execucao(
     workload_summary = state.get("workload_summary", {})
     network_aware_config = state.get("network_aware_config")
 
+    if lambda_base is None:
+        if network_aware_config and network_aware_config.get("lambda_base") is not None:
+            lambda_base = network_aware_config.get("lambda_base")
+        else:
+            lambda_base = state.get("lambda_base")
+
     metadata = {
         "policy": policy,
         "scheduler_policy": state.get("scheduler_policy", policy),
         "base_scheduler_policy": state.get("base_scheduler_policy"),
-        "network_weight": (
-            network_aware_config.get("network_weight")
-            if network_aware_config
-            else network_weight
-        ),
+        # λ da Equação 1: peso da política base frente à camada consciente da rede.
+        # No baseline, λ = 1,0 (nenhuma consciência de rede).
+        "lambda_base": lambda_base,
         "external_recommender_enabled": False,
         "historical_network_enabled": historico_network.get("enabled", False),
         "historical_network_mode": historico_network.get("mode"),

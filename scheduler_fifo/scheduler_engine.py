@@ -8,7 +8,6 @@ def escalonar_tarefas(
     state: dict,
     topology: nx.Graph,
     server_selection_fn=None,
-    network_weight: float = 1.0,
     network_aware_config: dict | None = None,
     base_scheduler_policy: str = "easy"
 ) -> tuple[list[dict], list[dict]]:

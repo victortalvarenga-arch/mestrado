@@ -4,6 +4,57 @@ from scheduler_dispatcher import escolher_servidor_base
 from serialization import task_key
 from network_metrics import calcular_metricas_trafego_tarefa_compacta
 
+# λ da Equação 1 do artigo:
+#     Score(t, s) = λ * Score_base(s) + (1 - λ) * (Score_net(t, s) + B_hist(t, s))
+#
+# λ controla o peso relativo entre a preferência da política base e a camada
+# consciente da rede:
+#   λ = 1,0 → decisão inteiramente da política base (equivale ao baseline);
+#   λ = 0,0 → decisão inteiramente network-aware (custo de rede + histórico).
+LAMBDA_BASE_PADRAO = 0.5
+
+# Como Score_base(s) é normalizado antes de entrar na Equação 1.
+# "candidates" mantém Score_base e Score_net na mesma escala [0,1], condição
+# para que λ pondere grandezas comparáveis. Ver normalizar_score_base().
+MODO_SCORE_BASE_PADRAO = "candidates"
+
+
+def normalizar_lambda_base(valor) -> float:
+    """Restringe λ ao intervalo [0, 1], com fallback para o valor padrão."""
+    try:
+        valor = float(valor)
+    except (TypeError, ValueError):
+        return LAMBDA_BASE_PADRAO
+
+    return min(1.0, max(0.0, valor))
+
+
+def resolver_lambda_base(network_aware_config: dict | None) -> float:
+    """
+    Obtém o λ da Equação 1 a partir da configuração do cenário.
+
+    Execuções anteriores parametrizavam a decisão por um peso de rede w, na forma
+    Score = Score_base + w * (Score_net + B_hist). Essa expressão é proporcional a
+    λ * Score_base + (1 - λ) * (Score_net + B_hist) com λ = 1 / (1 + w), de modo que
+    a conversão preserva exatamente a mesma ordenação de candidatos: w = 1,0 ⇔
+    λ = 0,5 e w = 0,0 ⇔ λ = 1,0 (baseline).
+    """
+    if not network_aware_config:
+        return LAMBDA_BASE_PADRAO
+
+    if network_aware_config.get("lambda_base") is not None:
+        return normalizar_lambda_base(network_aware_config["lambda_base"])
+
+    network_weight = network_aware_config.get("network_weight")
+    if network_weight is not None:
+        try:
+            return normalizar_lambda_base(1.0 / (1.0 + float(network_weight)))
+        except (TypeError, ValueError, ZeroDivisionError):
+            return LAMBDA_BASE_PADRAO
+
+    return LAMBDA_BASE_PADRAO
+
+
 def calcular_score_rede_metricas(metrics: dict, metric_weights: dict) -> float:
     return (
         metrics.get("cross_server_flows", 0) * metric_weights["cross_server"]
@@ -96,7 +147,8 @@ def escolher_servidor_network_aware(
     if network_aware_config is None:
         network_aware_config = {}
 
-    network_weight = network_aware_config.get("network_weight", 1.0)
+    lambda_base = resolver_lambda_base(network_aware_config)
+    base_score_mode = network_aware_config.get("base_score_mode", MODO_SCORE_BASE_PADRAO)
     metric_weights = network_aware_config.get("metric_weights", {
         "cross_server": 0.25,
         "cross_rack": 0.25,
@@ -131,6 +183,11 @@ def escolher_servidor_network_aware(
         state=state,
         topology=topology,
     )
+
+    # λ = 1,0 anula a camada consciente da rede: a decisão é integralmente da
+    # política base, o que reproduz o baseline sem custo de avaliação de candidatos.
+    if lambda_base >= 1.0:
+        return base_preferred_server
 
     candidatos = selecionar_candidatos_network_aware(
         job_id=job_id,
@@ -169,10 +226,11 @@ def escolher_servidor_network_aware(
     servidor = choose_server_network_aware(
         task={"job_id": job_id, "task_id": task_id},
         free_servers=candidatos,
-        fifo_order=base_order,
+        base_order=base_order,
         traffic_metrics=traffic_metrics,
         metric_weights=metric_weights,
-        network_weight=network_weight,
+        lambda_base=lambda_base,
+        base_score_mode=base_score_mode,
         task_history=task_history,
         topology=topology,
     )
@@ -182,10 +240,12 @@ def escolher_servidor_network_aware(
 def choose_server_network_aware(
     task,
     free_servers,
-    fifo_order,
+    base_order,
     traffic_metrics,
     metric_weights=None,
-    network_weight: float = 1.0,
+    lambda_base: float | None = None,
+    network_weight: float | None = None,
+    base_score_mode: str = MODO_SCORE_BASE_PADRAO,
     task_history=None,
     topology: nx.Graph = None,
 ):
@@ -196,6 +256,13 @@ def choose_server_network_aware(
             "cross_group":  0.5,
             "comm_cost":    0.2,
         }
+
+    if lambda_base is None:
+        lambda_base = resolver_lambda_base(
+            {"network_weight": network_weight} if network_weight is not None else None
+        )
+    else:
+        lambda_base = normalizar_lambda_base(lambda_base)
 
     if task_history is None:
         task_history = {}
@@ -218,8 +285,8 @@ def choose_server_network_aware(
 
     best_server = None
     best_score = float("inf")
-    fifo_size = max(1, len(fifo_order))
-    fifo_pos = {server: idx for idx, server in enumerate(fifo_order)}
+    base_pos = {server: idx for idx, server in enumerate(base_order)}
+    base_scores = normalizar_score_base(free_servers, base_pos, len(base_order), base_score_mode)
 
     for server in free_servers:
         # Score de rede: soma ponderada dos 4 componentes normalizados → já em [0,1]
@@ -232,9 +299,9 @@ def choose_server_network_aware(
         network_score = calcular_score_rede_metricas(metrics, metric_weights)
         # network_score agora está em [0, 1] também
 
-        # Score FIFO: posição normalizada → já em [0,1]
-        fifo_index = fifo_pos.get(server, len(fifo_order))
-        fifo_score = fifo_index / fifo_size
+        # Score da política base: posição do servidor na ordenação preferida
+        # pela heurística base, normalizada → já em [0,1]
+        base_score = base_scores.get(server, 1.0)
 
         # Recomendador histórico: bônus em [0,1] baseado em rack/grupo
         history_bonus = 0.0
@@ -252,17 +319,61 @@ def choose_server_network_aware(
                 if server_group != best_group:
                     history_bonus += 0.25
 
-        # Fórmula final: todos os componentes agora têm escala comparável
-        # fifo_score    ∈ [0, 1]
-        # network_score ∈ [0, 1]  (com network_weight controlando o peso relativo)
-        # history_bonus ∈ [-0.30, +0.25]
-        combined_score = fifo_score + network_weight * (network_score + history_bonus)
+        # Equação 1 do artigo, com todos os componentes em escala comparável:
+        #   base_score    ∈ [0, 1]
+        #   network_score ∈ [0, 1]
+        #   history_bonus ∈ [-0.30, +0.25]
+        # λ (lambda_base) rege quanta importância a política base mantém frente
+        # à camada consciente da rede.
+        combined_score = (
+            lambda_base * base_score
+            + (1.0 - lambda_base) * (network_score + history_bonus)
+        )
 
         if combined_score < best_score:
             best_score = combined_score
             best_server = server
 
     return best_server
+
+def normalizar_score_base(free_servers, base_pos: dict, total_servidores: int,
+                          base_score_mode: str = MODO_SCORE_BASE_PADRAO) -> dict:
+    """
+    Calcula Score_base(s) para cada candidato, em [0,1].
+
+    - "global": posição do servidor na ordenação da política base dividida pelo
+      número de servidores livres. Em clusters pouco carregados o denominador é
+      grande, então todos os candidatos ficam comprimidos perto de 0 e o termo
+      da política base perde influência frente ao custo de rede.
+    - "candidates": normalização min-max da posição entre os próprios candidatos
+      da decisão, a mesma convenção usada em Score_net. Os dois termos da
+      Equação 1 passam a ocupar toda a faixa [0,1], de modo que λ pondera
+      grandezas comparáveis independentemente da carga do cluster.
+    """
+    indices = {
+        server: base_pos.get(server, total_servidores)
+        for server in free_servers
+    }
+
+    if base_score_mode == "candidates":
+        valores = list(indices.values())
+        minimo = min(valores)
+        maximo = max(valores)
+
+        if maximo == minimo:
+            return {server: 0.0 for server in indices}
+
+        return {
+            server: (indice - minimo) / (maximo - minimo)
+            for server, indice in indices.items()
+        }
+
+    denominador = max(1, total_servidores)
+    return {
+        server: indice / denominador
+        for server, indice in indices.items()
+    }
+
 
 def normalizar_metricas_candidatos(traffic_metrics: dict) -> dict:
     """Normaliza cada métrica para [0,1] entre os candidatos disponíveis."""

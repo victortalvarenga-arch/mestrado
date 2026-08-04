@@ -3,7 +3,11 @@ from state import criar_state
 from serialization import task_key, compactar_lista_em_linha
 from scheduler_engine import escalonar_tarefas
 from scheduler_dispatcher import validar_politica_base
-from network_aware import escolher_servidor_network_aware
+from network_aware import (
+    escolher_servidor_network_aware,
+    resolver_lambda_base,
+    LAMBDA_BASE_PADRAO,
+)
 from history import carregar_historico_network_por_task
 from network_metrics import resumir_trafego_loop
 from reporting import extrair_busy_servers_compacto
@@ -194,12 +198,19 @@ def executar_simulacao(
     max_time: int = 100000,
     scheduler_policy: str = "easy",
     base_scheduler_policy: str = "easy",
-    network_weight: float = 1.0,
+    lambda_base: float | None = None,
     network_aware_config: dict | None = None,
     output_dir: str = "outputs",
     usar_historico_network: bool = True
 ) -> dict:
     base_scheduler_policy = validar_politica_base(base_scheduler_policy)
+
+    if lambda_base is None:
+        lambda_base = (
+            resolver_lambda_base(network_aware_config)
+            if network_aware_config
+            else LAMBDA_BASE_PADRAO
+        )
 
     if scheduler_policy != "network_aware":
         scheduler_policy = validar_politica_base(scheduler_policy)
@@ -214,7 +225,7 @@ def executar_simulacao(
             network_aware_config = {
                 "scenario_name": "network_aware_default",
                 "base_scheduler_policy": base_scheduler_policy,
-                "network_weight": network_weight,
+                "lambda_base": lambda_base,
                 "metric_weights": {
                     "cross_server": 0.25,
                     "cross_rack": 0.25,
@@ -227,9 +238,14 @@ def executar_simulacao(
             }
 
         network_aware_config["base_scheduler_policy"] = base_scheduler_policy
+        # o λ efetivamente aplicado fica registrado na configuração e, por
+        # consequência, nos metadados do trace da execução
+        network_aware_config["lambda_base"] = lambda_base
         state["network_aware_config"] = network_aware_config
     else:
         state["network_aware_config"] = None
+
+    state["lambda_base"] = lambda_base
 
     if scheduler_policy == "network_aware" and usar_historico_network:
         state["historico_network"] = carregar_historico_network_por_task(output_dir, topology)
@@ -266,7 +282,6 @@ def executar_simulacao(
             state,
             topology,
             server_selection_fn=server_selection_fn,
-            network_weight=network_weight,
             network_aware_config=network_aware_config,
             base_scheduler_policy=base_scheduler_policy
         )

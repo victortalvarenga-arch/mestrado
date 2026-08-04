@@ -177,15 +177,15 @@ def flow_classification(origem, destino):
 
 # ------------------------------------------------------------------
 # 5) Pontuação network-aware = a fórmula REAL de
-#    scheduler_fifo/network_aware.py (choose_server_network_aware),
-#    não a versão simplificada da Equação 1 do artigo. Parâmetros do
-#    cenário "01_balanced" (scheduler_fifo/main.py -> SCENARIOS):
-#      network_weight = 1.0
+#    scheduler_fifo/network_aware.py (choose_server_network_aware).
+#    Parâmetros do cenário "01_balanced" (scheduler_fifo/main.py -> SCENARIOS):
+#      lambda_base = 0.5
 #      metric_weights = cross_server=cross_rack=cross_group=comm_cost=0.25
 #
-#    combined_score = fifo_score + network_weight*(network_score + B_hist)
-#    - fifo_score: posição do servidor na ordenação numérica (proxy do
-#      "base_order" da política base), normalizada por len(SERVERS).
+#    combined_score = λ*base_score + (1-λ)*(network_score + B_hist)
+#    - base_score: posição do servidor na ordenação numérica (proxy do
+#      "base_order" da política base), normalizada por min-max entre os
+#      candidatos (como normalizar_score_base, modo "candidates").
 #    - network_score: soma ponderada das 4 métricas de tráfego,
 #      normalizadas por min-max entre os candidatos (como
 #      normalizar_metricas_candidatos).
@@ -195,11 +195,10 @@ def flow_classification(origem, destino):
 #      depois a network-aware consome esse traço).
 # ------------------------------------------------------------------
 METRIC_WEIGHTS = {"cross_server": 0.25, "cross_rack": 0.25, "cross_group": 0.25, "comm_cost": 0.25}
-NETWORK_WEIGHT = 1.0
+LAMBDA_BASE = 0.5
 
-FIFO_ORDER = sorted(SERVERS)
-FIFO_POS = {s: i for i, s in enumerate(FIFO_ORDER)}
-FIFO_SIZE = len(FIFO_ORDER)
+BASE_ORDER = sorted(SERVERS)
+BASE_POS = {s: i for i, s in enumerate(BASE_ORDER)}
 
 
 def compute_task_metrics(dag_id, t, candidate_server, placement):
@@ -230,6 +229,15 @@ def normalize_candidate_metrics(metrics_by_server):
             raw = metrics_by_server[s][field]
             normalized[s][field] = 0.0 if hi == lo else (raw - lo) / (hi - lo)
     return normalized
+
+
+def normalize_base_scores(candidate_servers):
+    """Score_base min-max entre os candidatos, como normalizar_score_base()."""
+    indices = {s: BASE_POS[s] for s in candidate_servers}
+    lo, hi = min(indices.values()), max(indices.values())
+    if hi == lo:
+        return {s: 0.0 for s in indices}
+    return {s: (i - lo) / (hi - lo) for s, i in indices.items()}
 
 
 def network_score(norm):
@@ -347,13 +355,14 @@ def schedule(network_aware: bool, history: dict | None = None):
                 o[2]: compute_task_metrics(dag_id, t, o[2], placement) for o in candidates
             }
             normalized = normalize_candidate_metrics(metrics_by_server)
+            base_scores = normalize_base_scores([o[2] for o in candidates])
 
             def combined_score(o):
                 srv = o[2]
-                fifo_score = FIFO_POS[srv] / FIFO_SIZE
+                base_score = base_scores[srv]
                 net_score = network_score(normalized[srv])
                 hist_bonus = history_bonus_for(dag_id, t, srv, history)
-                return fifo_score + NETWORK_WEIGHT * (net_score + hist_bonus)
+                return LAMBDA_BASE * base_score + (1 - LAMBDA_BASE) * (net_score + hist_bonus)
 
             eft, start, s = min(candidates, key=lambda o: (combined_score(o), o[2]))
         else:

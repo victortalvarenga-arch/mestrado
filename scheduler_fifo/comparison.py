@@ -95,7 +95,7 @@ def extrair_resumo_execucao_json(data: dict) -> dict:
 
     return {
         "policy": metadata.get("policy"),
-        "network_weight": metadata.get("network_weight"),
+        "lambda_base": metadata.get("lambda_base"),
         "network_aware_parameters": metadata.get("network_aware_parameters"),
 
         "generated_at": metadata.get("generated_at"),
@@ -487,22 +487,37 @@ SCENARIO_LABELS = {
     "04_comm_cost_strict": "Comm Cost Strict",
 }
 
+# Escala sequencial usada nas caixas; recortada conforme o número de cenários.
+PALETA_CENARIOS = ["#B3CDE3", "#6497B1", "#005B96", "#03396C", "#011F4B"]
 
-def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, output_path: str) -> None:
+
+def gerar_cores_cenarios(scenario_order: list) -> dict:
+    """
+    Atribui as primeiras cores da paleta sequencial aos cenários informados,
+    na ordem. Manter o início da paleta preserva as cores já usadas nas figuras
+    publicadas quando o número de cenários muda.
+    """
+    return {
+        scenario_name: PALETA_CENARIOS[idx % len(PALETA_CENARIOS)]
+        for idx, scenario_name in enumerate(scenario_order)
+    }
+
+
+def salvar_grafico_consolidado_heuristica(
+    comparison_paths_by_scenario: dict,
+    output_path: str,
+    scenario_order: list | None = None,
+    scenario_labels: dict | None = None,
+) -> None:
     """
     Gera um boxplot consolidado por heurística: para cada métrica no eixo X,
     uma caixa por cenário network-aware com a distribuição do ganho percentual
     por tarefa (mediana, quartis e whiskers em 1.5*IQR), no lugar do antigo
     gráfico de barras com média ± desvio padrão.
     """
-    scenario_order = SCENARIO_ORDER
-    scenario_labels = SCENARIO_LABELS
-    scenario_colors = {
-        "01_balanced": "#B3CDE3",
-        "02_rack_strict": "#6497B1",
-        "03_group_strict": "#005B96",
-        "04_comm_cost_strict": "#03396C"
-    }
+    scenario_order = scenario_order or SCENARIO_ORDER
+    scenario_labels = scenario_labels or SCENARIO_LABELS
+    scenario_colors = gerar_cores_cenarios(scenario_order)
 
     metricas = [
         # ("makespan", "Makespan"),
@@ -538,8 +553,14 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
     # quanto menor a largura de origem, maior o tamanho efetivo das fontes.
     fig, ax = plt.subplots(figsize=(7, 4.5))
     base_positions = list(range(len(metricas)))
-    box_width = 0.18
-    offsets = [-1.5*box_width, -0.5*box_width, 0.5*box_width, 1.5*box_width]
+    total_cenarios = max(1, len(scenario_order))
+    # mantém a mesma largura total ocupada por métrica (0.72) qualquer que
+    # seja a quantidade de cenários plotados
+    box_width = 0.72 / total_cenarios
+    offsets = [
+        (idx - (total_cenarios - 1) / 2) * box_width
+        for idx in range(total_cenarios)
+    ]
 
     for idx, scenario_name in enumerate(scenario_order):
         positions = []
@@ -584,11 +605,12 @@ def salvar_grafico_consolidado_heuristica(comparison_paths_by_scenario: dict, ou
 
     # boxplot não gera entradas de legenda automaticamente; usa patches proxy
     legend_handles = [
-        Patch(facecolor=scenario_colors[s], edgecolor="black", label=scenario_labels[s])
+        Patch(facecolor=scenario_colors[s], edgecolor="black",
+              label=scenario_labels.get(s, s))
         for s in scenario_order
     ]
-    ax.legend(handles=legend_handles, ncol=2, frameon=False,
-              loc="lower center", bbox_to_anchor=(0.5, 1.0), fontsize=13)
+    ax.legend(handles=legend_handles, ncol=2 if total_cenarios >= 4 else total_cenarios,
+              frameon=False, loc="lower center", bbox_to_anchor=(0.5, 1.0), fontsize=13)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")

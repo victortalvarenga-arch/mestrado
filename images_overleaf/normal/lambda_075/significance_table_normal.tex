@@ -1,0 +1,35 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Significância estatística (baseline vs.\ network-aware, por tarefa) no cenário normal, com $\lambda = 0{,}75$.}
+\label{tab:significancia_normal_lambda_075}
+\begin{tabular}{llrrrrr}
+\toprule
+Heurística & Cenário & Hops & Cross-srv & Cross-rack & Cross-grp & Custo \\
+\midrule
+EASY & Balanced & 18,26\%$^{*}$ & 18,40\%$^{*}$ & 9,09\% & -- & 19,59\%$^{*}$ \\
+EASY & Rack Strict & 0,14\% & 0,19\% & -3,03\% & -- & 0,17\% \\
+EASY & Group Strict & 0,18\% & 0,19\% & -- & -- & 0,21\% \\
+EASY & Comm Cost Strict & 22,79\%$^{*}$ & 23,00\%$^{*}$ & 9,09\% & -- & 24,18\%$^{*}$ \\
+\addlinespace
+HEFT & Balanced & 31,08\%$^{*}$ & 19,24\%$^{*}$ & 93,05\%$^{*}$ & -- & 31,17\%$^{*}$ \\
+HEFT & Rack Strict & 24,39\%$^{*}$ & 11,18\%$^{*}$ & 93,55\%$^{*}$ & -- & 24,24\%$^{*}$ \\
+HEFT & Group Strict & 24,35\%$^{*}$ & 11,18\%$^{*}$ & 93,30\%$^{*}$ & -- & 24,21\%$^{*}$ \\
+HEFT & Comm Cost Strict & 31,95\%$^{*}$ & 20,28\%$^{*}$ & 93,05\%$^{*}$ & -- & 32,14\%$^{*}$ \\
+\addlinespace
+CPOP & Balanced & 14,74\%$^{*}$ & 14,81\%$^{*}$ & 8,70\% & -- & 14,79\%$^{*}$ \\
+CPOP & Rack Strict & 0,63\% & 0,49\% & 13,04\% & -- & 0,81\%$^{*}$ \\
+CPOP & Group Strict & 0,29\% & 0,30\% & -- & -- & 0,24\% \\
+CPOP & Comm Cost Strict & 19,72\%$^{*}$ & 19,84\%$^{*}$ & 8,70\% & -- & 20,18\%$^{*}$ \\
+\addlinespace
+PEFT & Balanced & 14,22\%$^{*}$ & 14,31\%$^{*}$ & 7,14\% & -- & 14,87\%$^{*}$ \\
+PEFT & Rack Strict & 0,23\% & 0,19\% & 3,57\% & -- & 0,27\% \\
+PEFT & Group Strict & 0,09\% & 0,09\% & -- & -- & 0,08\% \\
+PEFT & Comm Cost Strict & 18,29\%$^{*}$ & 18,48\%$^{*}$ & 3,57\% & -- & 18,66\%$^{*}$ \\
+\addlinespace
+\bottomrule
+\end{tabular}
+
+\vspace{2mm}
+\footnotesize Ganho médio percentual por tarefa (baseline vs.\ network-aware). $^{*}$ indica significância estatística ($p<0{,}05$): a normalidade das diferenças foi avaliada via Shapiro-Wilk, com teste $t$ pareado quando normal e Wilcoxon signed-rank caso contrário. ``--'' indica dados insuficientes (nenhuma diferença entre as execuções ou menos de 3 pares de tarefas válidos).
+\end{table}

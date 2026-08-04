@@ -7,8 +7,6 @@ from logs import gerar_nome_arquivo_execucao, salvar_json_execucao, buscar_ultim
 from comparison import (
     salvar_json_comparacao_execucoes,
     salvar_grafico_consolidado_heuristica,
-    SCENARIO_ORDER,
-    SCENARIO_LABELS,
 )
 from statistical_tests import salvar_tabela_latex_significancia_consolidada
 from export_topology import exportar_topologia_dot
@@ -18,22 +16,45 @@ import glob
 # Configurações principais
 HEURISTICS_TO_RUN = ["easy", "heft", "cpop", "peft"]  # selecione as heurísticas
 # HEURISTICS_TO_RUN = ["peft"]
-SCENARIO_TYPE = "stress"  # "normal" ou "stress"
-REEXECUTAR_SIMULACOES = False  # False = reaproveita dados salvos e só regenera relatórios/gráficos
+SCENARIO_TYPE = "normal"  # "normal" ou "stress"
+REEXECUTAR_SIMULACOES = True  # False = reaproveita dados salvos e só regenera relatórios/gráficos
 
 
-SCENARIOS = {
+# ---------------------------------------------------------------------------
+# λ da Equação 1 do artigo:
+#     Score(t, s) = λ * Score_base(s) + (1 - λ) * (Score_net(t, s) + B_hist(t, s))
+#
+# λ rege a importância da política base frente à camada consciente da rede:
+#   λ = 1,0 → decisão inteiramente da heurística tradicional (igual ao baseline);
+#   λ = 0,5 → base e rede com o mesmo peso;
+#   λ = 0,0 → decisão inteiramente network-aware.
+#
+# Cada valor de LAMBDA_VALUES gera a campanha completa: as quatro configurações
+# de pesos de métrica são executadas para todas as heurísticas naquele λ, com
+# resultados, gráficos e tabela LaTeX próprios em uma subpasta por λ.
+# ---------------------------------------------------------------------------
+LAMBDA_VALUES = [0.25, 0.50, 0.75]
+
+# Normalização de Score_base antes da Equação 1:
+#   "candidates" → min-max entre os candidatos da decisão, mesma convenção de
+#                  Score_net, mantendo os dois termos em [0,1];
+#   "global"     → posição na fila de servidores livres dividida pelo total de
+#                  livres (comportamento das execuções anteriores).
+BASE_SCORE_MODE = "candidates"
+
+PESOS_BALANCEADOS = {"cross_server": 0.25, "cross_rack": 0.25, "cross_group": 0.25, "comm_cost": 0.25}
+
+
+WEIGHT_SCENARIOS = {
     "01_balanced": {
         "scenario_name": "01_balanced",
-        "network_weight": 1.0,
-        "metric_weights": {"cross_server": 0.25, "cross_rack": 0.25, "cross_group": 0.25, "comm_cost": 0.25},
+        "metric_weights": dict(PESOS_BALANCEADOS),
         "max_base_candidates": 20,
         "max_topology_candidates_per_pred": 20,
         "max_total_candidates": 100,
     },
     "02_rack_strict": {
         "scenario_name": "02_rack_strict",
-        "network_weight": 1.0,
         "metric_weights": {"cross_server": 0.05, "cross_rack": 0.75, "cross_group": 0.10, "comm_cost": 0.10},
         "max_base_candidates": 20,
         "max_topology_candidates_per_pred": 30,
@@ -41,7 +62,6 @@ SCENARIOS = {
     },
     "03_group_strict": {
         "scenario_name": "03_group_strict",
-        "network_weight": 1.0,
         "metric_weights": {"cross_server": 0.05, "cross_rack": 0.10, "cross_group": 0.75, "comm_cost": 0.10},
         "max_base_candidates": 20,
         "max_topology_candidates_per_pred": 30,
@@ -49,7 +69,6 @@ SCENARIOS = {
     },
     "04_comm_cost_strict": {
         "scenario_name": "04_comm_cost_strict",
-        "network_weight": 1.0,
         "metric_weights": {"cross_server": 0.05, "cross_rack": 0.10, "cross_group": 0.10, "comm_cost": 0.75},
         "max_base_candidates": 20,
         "max_topology_candidates_per_pred": 40,
@@ -57,19 +76,102 @@ SCENARIOS = {
     },
 }
 
+
+SCENARIO_LABELS = {
+    "01_balanced": "Balanced",
+    "02_rack_strict": "Rack Strict",
+    "03_group_strict": "Group Strict",
+    "04_comm_cost_strict": "Comm Cost Strict",
+}
+
+WEIGHT_SCENARIO_ORDER = list(WEIGHT_SCENARIOS.keys())
+
+
+def formatar_lambda_latex(valor: float) -> str:
+    """Formata λ com vírgula decimal, no padrão numérico usado no artigo."""
+    return f"{valor:.2f}".replace(".", "{,}")
+
+
+def rotulo_lambda(valor_lambda: float) -> str:
+    """
+    Identificador de diretório para um λ, ex.: 0,25 → "lambda_025".
+
+    Sem vírgula nem ponto de propósito: o caminho entra em \\includegraphics no
+    Overleaf, e vírgula no nome do arquivo quebra o parser do graphicx.
+    """
+    return f"lambda_{int(round(valor_lambda * 100)):03d}"
+
+
+def construir_cenarios(valores_lambda: list) -> dict:
+    """
+    Monta a matriz completa de cenários: cada valor de λ recebe as quatro
+    configurações de pesos de métrica, de modo que toda a campanha existente
+    seja reproduzida integralmente em cada λ.
+
+    A chave é única por combinação (λ, pesos) e o campo `output_subdir` define
+    a subpasta λ em que os artefatos daquele cenário são gravados.
+    """
+    cenarios = {}
+
+    for valor_lambda in sorted(valores_lambda):
+        lambda_key = rotulo_lambda(valor_lambda)
+
+        for weight_key, config_pesos in WEIGHT_SCENARIOS.items():
+            chave = f"{lambda_key}_{weight_key}"
+
+            config = copy.deepcopy(config_pesos)
+            config.update({
+                "scenario_name": chave,
+                "lambda_base": float(valor_lambda),
+                "base_score_mode": BASE_SCORE_MODE,
+                "weight_scenario": weight_key,
+                "lambda_key": lambda_key,
+                "output_subdir": os.path.join(lambda_key, weight_key),
+            })
+
+            cenarios[chave] = config
+
+    return cenarios
+
+
+SCENARIOS = construir_cenarios(LAMBDA_VALUES)
+
+# λ → chaves de cenário daquele λ, na ordem das configurações de pesos
+CENARIOS_POR_LAMBDA = {
+    rotulo_lambda(valor): [
+        f"{rotulo_lambda(valor)}_{weight_key}"
+        for weight_key in WEIGHT_SCENARIO_ORDER
+    ]
+    for valor in sorted(LAMBDA_VALUES)
+}
+
+LAMBDA_POR_ROTULO = {rotulo_lambda(valor): valor for valor in sorted(LAMBDA_VALUES)}
+
 def inferir_rotulo_cenario(jobs_file: str) -> str:
     return "stress" if "stress" in os.path.basename(jobs_file).lower() else "normal"
 
-def gerar_summary_consolidado(project_dir: str, scenario_label: str):
+def gerar_summary_consolidado(project_dir: str, scenario_label: str,
+                              experiment_dirs: list | None = None):
     """
-    Junta todos os arquivos *_summary.md do cenário informado (normal ou stress),
-    em todos os diretórios de heurísticas e cenários network-aware.
+    Junta os arquivos *_summary.md do cenário informado (normal ou stress).
+
+    Quando `experiment_dirs` é informado, agrega apenas os experimentos daquela
+    campanha; caso contrário, varre todos os experimentos já gravados em disco.
+    Restringir à campanha atual evita misturar execuções antigas, com outra
+    parametrização, no mesmo resumo.
     """
     outputs_dir = os.path.join(project_dir, "outputs_experiments", scenario_label)
     summary_file = os.path.join(project_dir, "outputs_experiments", f"summary_consolidado_{scenario_label}.md")
     os.makedirs(os.path.dirname(summary_file), exist_ok=True)
 
-    md_files = glob.glob(os.path.join(outputs_dir, "**", "*_summary.md"), recursive=True)
+    if experiment_dirs:
+        md_files = []
+        for experiment_dir in experiment_dirs:
+            md_files.extend(
+                glob.glob(os.path.join(experiment_dir, "**", "*_summary.md"), recursive=True)
+            )
+    else:
+        md_files = glob.glob(os.path.join(outputs_dir, "**", "*_summary.md"), recursive=True)
 
     if not md_files:
         print("Nenhum summary individual encontrado. O summary consolidado ficará vazio.")
@@ -139,14 +241,14 @@ def executar_experimento_politica(base_scheduler_policy: str, jobs: dict, topolo
             jobs=jobs, topology=topology, max_time=100000,
             scheduler_policy=base_scheduler_policy,
             base_scheduler_policy=base_scheduler_policy,
-            network_weight=0.0, network_aware_config=None,
+            lambda_base=1.0, network_aware_config=None,
             output_dir=baseline_dir, usar_historico_network=False
         )
         imprimir_resumo_final(baseline_state)
         nome_baseline = gerar_nome_arquivo_execucao(f"{base_scheduler_policy}_execution_trace")
         caminho_baseline = os.path.join(baseline_dir, nome_baseline)
         salvar_json_execucao(state=baseline_state, output_path=caminho_baseline,
-                             policy=base_scheduler_policy, network_weight=0.0)
+                             policy=base_scheduler_policy, lambda_base=1.0)
     else:
         experiment_dir = localizar_experimento_mais_recente(
             project_dir=project_dir,
@@ -175,17 +277,19 @@ def executar_experimento_politica(base_scheduler_policy: str, jobs: dict, topolo
     comparison_paths_by_scenario = {}
 
     for scenario_name, scenario_config in SCENARIOS.items():
-        scenario_dir = os.path.join(experiment_dir, scenario_name)
+        scenario_dir = os.path.join(experiment_dir, scenario_config["output_subdir"])
 
         if reexecutar_simulacoes:
             os.makedirs(scenario_dir, exist_ok=True)
             network_aware_config = copy.deepcopy(scenario_config)
             network_aware_config["base_scheduler_policy"] = base_scheduler_policy
+            lambda_cenario = network_aware_config["lambda_base"]
+            print(f"  {scenario_name}: lambda = {lambda_cenario}")
             state = executar_simulacao(
                 jobs=jobs, topology=topology, max_time=100000,
                 scheduler_policy="network_aware",
                 base_scheduler_policy=base_scheduler_policy,
-                network_weight=network_aware_config["network_weight"],
+                lambda_base=lambda_cenario,
                 network_aware_config=network_aware_config,
                 output_dir=baseline_dir, usar_historico_network=True
             )
@@ -193,7 +297,7 @@ def executar_experimento_politica(base_scheduler_policy: str, jobs: dict, topolo
             nome_arquivo = gerar_nome_arquivo_execucao("network_aware_execution_trace")
             caminho_saida = os.path.join(scenario_dir, nome_arquivo)
             salvar_json_execucao(state=state, output_path=caminho_saida,
-                                 policy="network_aware", network_weight=network_aware_config["network_weight"])
+                                 policy="network_aware", lambda_base=lambda_cenario)
         else:
             caminho_saida = buscar_ultimo_log_execucao(scenario_dir)
             if caminho_saida is None:
@@ -212,37 +316,66 @@ def executar_experimento_politica(base_scheduler_policy: str, jobs: dict, topolo
         if comparison_json:
             comparison_paths_by_scenario[scenario_name] = comparison_json
 
-    # gera summary consolidado sempre, separado por cenário
-    gerar_summary_consolidado(project_dir, experiment_dataset_label)
+    # um gráfico consolidado por λ, com as quatro configurações de pesos,
+    # gravado na subpasta daquele λ
+    for lambda_key, chaves_do_lambda in CENARIOS_POR_LAMBDA.items():
+        caminhos_do_lambda = {
+            weight_key: comparison_paths_by_scenario[chave]
+            for weight_key, chave in zip(WEIGHT_SCENARIO_ORDER, chaves_do_lambda)
+            if chave in comparison_paths_by_scenario
+        }
 
-    # gera gráfico consolidado, também separado por cenário
-    images_overleaf_dir = os.path.join(project_dir, "images_overleaf", experiment_dataset_label)
-    os.makedirs(images_overleaf_dir, exist_ok=True)
-    caminho_grafico_consolidado = os.path.join(
-        images_overleaf_dir, f"{base_scheduler_policy}_{experiment_dataset_label}_grouped_chart.png"
-    )
-    salvar_grafico_consolidado_heuristica(
-        comparison_paths_by_scenario=comparison_paths_by_scenario,
-        output_path=caminho_grafico_consolidado
-    )
-    print(f"Gráfico consolidado gerado: {caminho_grafico_consolidado}")
+        if not caminhos_do_lambda:
+            continue
+
+        lambda_images_dir = os.path.join(
+            project_dir, "images_overleaf", experiment_dataset_label, lambda_key
+        )
+        os.makedirs(lambda_images_dir, exist_ok=True)
+
+        caminho_grafico_consolidado = os.path.join(
+            lambda_images_dir,
+            f"{base_scheduler_policy}_{experiment_dataset_label}_grouped_chart.png"
+        )
+        salvar_grafico_consolidado_heuristica(
+            comparison_paths_by_scenario=caminhos_do_lambda,
+            output_path=caminho_grafico_consolidado,
+            scenario_order=WEIGHT_SCENARIO_ORDER,
+            scenario_labels=SCENARIO_LABELS,
+        )
+        print(f"Gráfico consolidado gerado: {caminho_grafico_consolidado}")
+
     print(f"\n=== Experimento {base_scheduler_policy.upper()} finalizado ===")
     print(f"Resultados em: {experiment_dir}")
 
-    # resultados estatísticos por cenário, usados depois para a tabela LaTeX consolidada
-    resultados_estatisticos_por_cenario = {}
-    for scenario_name, comparison_json_path in comparison_paths_by_scenario.items():
-        with open(comparison_json_path, "r", encoding="utf-8") as f:
-            resultados_estatisticos_por_cenario[scenario_name] = json.load(f).get("statistical_significance")
+    # resultados estatísticos organizados por λ e configuração de pesos, usados
+    # depois para gerar uma tabela LaTeX consolidada por λ
+    resultados_estatisticos_por_lambda = {}
 
-    return resultados_estatisticos_por_cenario
+    for lambda_key, chaves_do_lambda in CENARIOS_POR_LAMBDA.items():
+        por_configuracao = {}
+
+        for weight_key, chave in zip(WEIGHT_SCENARIO_ORDER, chaves_do_lambda):
+            comparison_json_path = comparison_paths_by_scenario.get(chave)
+
+            if comparison_json_path is None:
+                continue
+
+            with open(comparison_json_path, "r", encoding="utf-8") as f:
+                por_configuracao[weight_key] = json.load(f).get("statistical_significance")
+
+        resultados_estatisticos_por_lambda[lambda_key] = por_configuracao
+
+    return resultados_estatisticos_por_lambda, experiment_dir
 
 
-def main():
+def main(scenario_type: str | None = None):
     package_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(package_dir)
 
-    if SCENARIO_TYPE.lower() == "stress":
+    scenario_type = scenario_type or SCENARIO_TYPE
+
+    if scenario_type.lower() == "stress":
         jobs_file = os.path.join(project_dir, "datas/jobs_stress.data")
         topology_file = os.path.join(project_dir, "racks_spatial_distribution_stress.md")
     else:
@@ -259,7 +392,7 @@ def main():
         jobs = carregar_jobs(jobs_file)
         topology = carregar_topologia(topology_file)
 
-    print(f"Scenario: {SCENARIO_TYPE}, Heurísticas: {', '.join(HEURISTICS_TO_RUN)}")
+    print(f"Scenario: {scenario_type}, Heurísticas: {', '.join(HEURISTICS_TO_RUN)}")
     print(f"Reexecutar simulações: {REEXECUTAR_SIMULACOES}")
 
     if REEXECUTAR_SIMULACOES:
@@ -270,10 +403,14 @@ def main():
 
     print(f"Rótulo do cenário: {experiment_dataset_label}")
 
+    print(f"Valores de lambda avaliados: {LAMBDA_VALUES}")
+    print(f"Configurações de pesos por lambda: {', '.join(WEIGHT_SCENARIO_ORDER)}")
+
     resultados_estatisticos_por_heuristica = {}
+    experiment_dirs = []
 
     for base_scheduler_policy in HEURISTICS_TO_RUN:
-        resultados_estatisticos_por_heuristica[base_scheduler_policy] = executar_experimento_politica(
+        resultados, experiment_dir = executar_experimento_politica(
             base_scheduler_policy=base_scheduler_policy,
             jobs=jobs,
             topology=topology,
@@ -283,24 +420,45 @@ def main():
             experiment_dataset_label=experiment_dataset_label,
             reexecutar_simulacoes=REEXECUTAR_SIMULACOES
         )
+        resultados_estatisticos_por_heuristica[base_scheduler_policy] = resultados
+        experiment_dirs.append(experiment_dir)
 
-    images_overleaf_dir = os.path.join(project_dir, "images_overleaf", experiment_dataset_label)
-    os.makedirs(images_overleaf_dir, exist_ok=True)
-    caminho_tabela_consolidada = os.path.join(
-        images_overleaf_dir, f"significance_table_{experiment_dataset_label}.tex"
-    )
-    salvar_tabela_latex_significancia_consolidada(
-        resultados_por_heuristica_cenario=resultados_estatisticos_por_heuristica,
-        heuristica_order=HEURISTICS_TO_RUN,
-        scenario_order=SCENARIO_ORDER,
-        scenario_labels=SCENARIO_LABELS,
-        caption=f"Significância estatística (baseline vs.\\ network-aware, por tarefa) no cenário {experiment_dataset_label}.",
-        label=f"tab:significancia_{experiment_dataset_label}",
-        output_path=caminho_tabela_consolidada,
-    )
-    print(f"Tabela LaTeX consolidada gerada: {caminho_tabela_consolidada}")
+    gerar_summary_consolidado(project_dir, experiment_dataset_label, experiment_dirs)
+
+    # uma tabela LaTeX consolidada por λ, na mesma subpasta dos gráficos daquele λ
+    for lambda_key, valor_lambda in LAMBDA_POR_ROTULO.items():
+        resultados_do_lambda = {
+            heuristica: (resultados or {}).get(lambda_key, {})
+            for heuristica, resultados in resultados_estatisticos_por_heuristica.items()
+        }
+
+        lambda_images_dir = os.path.join(
+            project_dir, "images_overleaf", experiment_dataset_label, lambda_key
+        )
+        os.makedirs(lambda_images_dir, exist_ok=True)
+
+        caminho_tabela_consolidada = os.path.join(
+            lambda_images_dir, f"significance_table_{experiment_dataset_label}.tex"
+        )
+        salvar_tabela_latex_significancia_consolidada(
+            resultados_por_heuristica_cenario=resultados_do_lambda,
+            heuristica_order=HEURISTICS_TO_RUN,
+            scenario_order=WEIGHT_SCENARIO_ORDER,
+            scenario_labels=SCENARIO_LABELS,
+            caption=(
+                f"Significância estatística (baseline vs.\\ network-aware, por tarefa) "
+                f"no cenário {experiment_dataset_label}, com "
+                f"$\\lambda = {formatar_lambda_latex(valor_lambda)}$."
+            ),
+            label=f"tab:significancia_{experiment_dataset_label}_{lambda_key}",
+            output_path=caminho_tabela_consolidada,
+        )
+        print(f"Tabela LaTeX consolidada gerada: {caminho_tabela_consolidada}")
 
     print("\n=== Todos os experimentos finalizados ===")
 
 if __name__ == "__main__":
-    main()
+    # `python main.py` usa SCENARIO_TYPE; `python main.py stress` sobrepõe
+    # apenas o conjunto de carga/topologia, sem alterar o arquivo.
+    import sys
+    main(sys.argv[1] if len(sys.argv) > 1 else None)
