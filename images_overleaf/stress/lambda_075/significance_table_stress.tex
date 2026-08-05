@@ -1,0 +1,35 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Significância estatística (baseline vs.\ network-aware, por tarefa) no cenário stress, com $\lambda = 0{,}75$.}
+\label{tab:significancia_stress_lambda_075}
+\begin{tabular}{llrrrrr}
+\toprule
+Heurística & Cenário & Hops & Cross-srv & Cross-rack & Cross-grp & Custo \\
+\midrule
+EASY & Balanced & 2,57\%$^{*}$ & 2,26\%$^{*}$ & 2,81\%$^{*}$ & 1,86\%$^{*}$ & 2,58\%$^{*}$ \\
+EASY & Rack Strict & 3,65\%$^{*}$ & 2,52\%$^{*}$ & 6,16\%$^{*}$ & 2,21\%$^{*}$ & 3,66\%$^{*}$ \\
+EASY & Group Strict & 1,80\%$^{*}$ & 0,70\%$^{*}$ & 2,15\%$^{*}$ & 5,48\%$^{*}$ & 1,65\%$^{*}$ \\
+EASY & Comm Cost Strict & 3,00\%$^{*}$ & 2,28\%$^{*}$ & 2,70\%$^{*}$ & 2,02\%$^{*}$ & 3,12\%$^{*}$ \\
+\addlinespace
+HEFT & Balanced & -0,99\%$^{*}$ & -4,73\%$^{*}$ & 2,69\%$^{*}$ & 4,14\%$^{*}$ & -1,04\% \\
+HEFT & Rack Strict & -1,67\%$^{*}$ & -5,82\%$^{*}$ & 3,75\%$^{*}$ & 3,93\%$^{*}$ & -1,82\%$^{*}$ \\
+HEFT & Group Strict & -1,17\%$^{*}$ & -6,09\%$^{*}$ & 3,55\%$^{*}$ & 8,10\%$^{*}$ & -1,19\% \\
+HEFT & Comm Cost Strict & -0,98\%$^{*}$ & -5,89\%$^{*}$ & 3,24\%$^{*}$ & 4,42\%$^{*}$ & -1,01\% \\
+\addlinespace
+CPOP & Balanced & 1,60\%$^{*}$ & 0,82\%$^{*}$ & 2,51\%$^{*}$ & 1,81\%$^{*}$ & 1,63\%$^{*}$ \\
+CPOP & Rack Strict & 1,72\%$^{*}$ & -0,12\% & 4,75\%$^{*}$ & 2,35\%$^{*}$ & 1,85\%$^{*}$ \\
+CPOP & Group Strict & 0,58\%$^{*}$ & -1,56\%$^{*}$ & 2,45\%$^{*}$ & 5,94\%$^{*}$ & 0,45\%$^{*}$ \\
+CPOP & Comm Cost Strict & 1,48\%$^{*}$ & 0,11\% & 2,09\%$^{*}$ & 1,61\%$^{*}$ & 1,59\%$^{*}$ \\
+\addlinespace
+PEFT & Balanced & -1,24\%$^{*}$ & -3,52\%$^{*}$ & 1,27\%$^{*}$ & 1,89\%$^{*}$ & -1,22\%$^{*}$ \\
+PEFT & Rack Strict & -1,93\%$^{*}$ & -5,32\%$^{*}$ & 2,65\%$^{*}$ & 2,74\%$^{*}$ & -1,83\%$^{*}$ \\
+PEFT & Group Strict & -1,74\%$^{*}$ & -5,88\%$^{*}$ & 2,43\%$^{*}$ & 5,93\%$^{*}$ & -1,80\%$^{*}$ \\
+PEFT & Comm Cost Strict & -1,63\%$^{*}$ & -5,45\%$^{*}$ & 1,74\%$^{*}$ & 2,57\%$^{*}$ & -1,36\%$^{*}$ \\
+\addlinespace
+\bottomrule
+\end{tabular}
+
+\vspace{2mm}
+\footnotesize Ganho médio percentual por tarefa (baseline vs.\ network-aware). $^{*}$ indica significância estatística ($p<0{,}05$): a normalidade das diferenças foi avaliada via Shapiro-Wilk, com teste $t$ pareado quando normal e Wilcoxon signed-rank caso contrário. ``--'' indica dados insuficientes (nenhuma diferença entre as execuções ou menos de 3 pares de tarefas válidos).
+\end{table}

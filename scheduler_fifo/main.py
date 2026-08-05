@@ -19,6 +19,13 @@ HEURISTICS_TO_RUN = ["easy", "heft", "cpop", "peft"]  # selecione as heurística
 SCENARIO_TYPE = "normal"  # "normal" ou "stress"
 REEXECUTAR_SIMULACOES = True  # False = reaproveita dados salvos e só regenera relatórios/gráficos
 
+# Retomada de campanha interrompida (queda de energia, processo morto).
+# Com True, continua o experimento mais recente de cada heurística: simula apenas
+# os cenários sem trace íntegro em disco e reaproveita os já concluídos.
+# Traces truncados são detectados e refeitos. Não tem efeito quando
+# REEXECUTAR_SIMULACOES=False.
+RETOMAR_CAMPANHA = True
+
 
 # ---------------------------------------------------------------------------
 # λ da Equação 1 do artigo:
@@ -217,38 +224,135 @@ def localizar_experimento_mais_recente(project_dir: str, scenario_label: str, ba
     return max(experimentos, key=lambda p: os.path.getmtime(p))
 
 
+def experimento_compativel(experiment_dir: str, base_scheduler_policy: str) -> bool:
+    """
+    Verifica se um experimento em disco pertence à estrutura de cenários atual.
+
+    Campanhas antigas gravavam os cenários direto na raiz do experimento
+    ("01_balanced/"), enquanto a atual os agrupa por λ ("lambda_025/01_balanced/").
+    Retomar um experimento antigo misturaria execuções de parametrizações
+    diferentes no mesmo diretório, então qualquer subpasta fora do layout
+    esperado invalida a retomada.
+    """
+    if not os.path.isdir(experiment_dir):
+        return False
+
+    permitidos = {"graphs", f"00_{base_scheduler_policy}_baseline"}
+    permitidos.update(CENARIOS_POR_LAMBDA.keys())
+
+    for nome in os.listdir(experiment_dir):
+        if os.path.isdir(os.path.join(experiment_dir, nome)) and nome not in permitidos:
+            return False
+
+    return True
+
+
+def localizar_experimento_retomavel(project_dir: str, scenario_label: str,
+                                    base_scheduler_policy: str) -> str | None:
+    """Experimento mais recente que pode ser continuado com a configuração atual."""
+    experiment_dir = localizar_experimento_mais_recente(
+        project_dir=project_dir,
+        scenario_label=scenario_label,
+        base_scheduler_policy=base_scheduler_policy
+    )
+
+    if experiment_dir is None:
+        return None
+
+    if not experimento_compativel(experiment_dir, base_scheduler_policy):
+        print(
+            f"  Experimento existente ignorado na retomada (estrutura antiga): "
+            f"{os.path.basename(experiment_dir)}"
+        )
+        return None
+
+    return experiment_dir
+
+
+def trace_utilizavel(output_dir: str) -> str | None:
+    """
+    Retorna o trace mais recente de um diretório apenas se ele estiver completo.
+
+    Uma campanha interrompida no meio da escrita (queda de energia, processo
+    morto) deixa um JSON truncado, que quebraria a etapa de comparação. A
+    verificação lê só o final do arquivo: `json.dump` fecha o objeto com "}",
+    então um arquivo que não termina assim foi cortado.
+    """
+    caminho = buscar_ultimo_log_execucao(output_dir)
+
+    if caminho is None:
+        return None
+
+    try:
+        tamanho = os.path.getsize(caminho)
+        if tamanho < 1024:
+            return None
+
+        with open(caminho, "rb") as f:
+            f.seek(max(0, tamanho - 64))
+            fim = f.read().strip()
+
+        if not fim.endswith(b"}"):
+            print(f"  Aviso: trace truncado, será refeito: {os.path.basename(caminho)}")
+            return None
+    except OSError:
+        return None
+
+    return caminho
+
+
 def executar_experimento_politica(base_scheduler_policy: str, jobs: dict, topology,
                                   topology_file: str, project_dir: str,
                                   experiment_timestamp: str, experiment_dataset_label: str,
-                                  reexecutar_simulacoes: bool = True):
+                                  reexecutar_simulacoes: bool = True,
+                                  retomar_campanha: bool = False):
     import copy
 
     if reexecutar_simulacoes:
-        experiment_name = f"experiment_{base_scheduler_policy}_{experiment_timestamp}"
-        experiment_dir = os.path.join(
-            project_dir, "outputs_experiments", experiment_dataset_label,
-            base_scheduler_policy, experiment_name
-        )
+        experiment_dir = None
+
+        # Retomada: continua o experimento mais recente desta heurística em vez
+        # de abrir um novo, para aproveitar as simulações já concluídas.
+        if retomar_campanha:
+            experiment_dir = localizar_experimento_retomavel(
+                project_dir=project_dir,
+                scenario_label=experiment_dataset_label,
+                base_scheduler_policy=base_scheduler_policy
+            )
+
+        if experiment_dir is None:
+            experiment_name = f"experiment_{base_scheduler_policy}_{experiment_timestamp}"
+            experiment_dir = os.path.join(
+                project_dir, "outputs_experiments", experiment_dataset_label,
+                base_scheduler_policy, experiment_name
+            )
+
         graphs_dir = os.path.join(experiment_dir, "graphs")
         os.makedirs(experiment_dir, exist_ok=True)
         exportar_topologia_dot(topology_file=topology_file, output_dir=graphs_dir)
 
         print(f"\n=== Executando {base_scheduler_policy.upper()} ===")
+        print(f"Diretório do experimento: {experiment_dir}")
         baseline_dir = os.path.join(experiment_dir, f"00_{base_scheduler_policy}_baseline")
         os.makedirs(baseline_dir, exist_ok=True)
 
-        baseline_state = executar_simulacao(
-            jobs=jobs, topology=topology, max_time=100000,
-            scheduler_policy=base_scheduler_policy,
-            base_scheduler_policy=base_scheduler_policy,
-            lambda_base=1.0, network_aware_config=None,
-            output_dir=baseline_dir, usar_historico_network=False
-        )
-        imprimir_resumo_final(baseline_state)
-        nome_baseline = gerar_nome_arquivo_execucao(f"{base_scheduler_policy}_execution_trace")
-        caminho_baseline = os.path.join(baseline_dir, nome_baseline)
-        salvar_json_execucao(state=baseline_state, output_path=caminho_baseline,
-                             policy=base_scheduler_policy, lambda_base=1.0)
+        caminho_baseline = trace_utilizavel(baseline_dir) if retomar_campanha else None
+
+        if caminho_baseline is not None:
+            print(f"  baseline: reaproveitando {os.path.basename(caminho_baseline)}")
+        else:
+            baseline_state = executar_simulacao(
+                jobs=jobs, topology=topology, max_time=100000,
+                scheduler_policy=base_scheduler_policy,
+                base_scheduler_policy=base_scheduler_policy,
+                lambda_base=1.0, network_aware_config=None,
+                output_dir=baseline_dir, usar_historico_network=False
+            )
+            imprimir_resumo_final(baseline_state)
+            nome_baseline = gerar_nome_arquivo_execucao(f"{base_scheduler_policy}_execution_trace")
+            caminho_baseline = os.path.join(baseline_dir, nome_baseline)
+            salvar_json_execucao(state=baseline_state, output_path=caminho_baseline,
+                                 policy=base_scheduler_policy, lambda_base=1.0)
     else:
         experiment_dir = localizar_experimento_mais_recente(
             project_dir=project_dir,
@@ -281,23 +385,29 @@ def executar_experimento_politica(base_scheduler_policy: str, jobs: dict, topolo
 
         if reexecutar_simulacoes:
             os.makedirs(scenario_dir, exist_ok=True)
-            network_aware_config = copy.deepcopy(scenario_config)
-            network_aware_config["base_scheduler_policy"] = base_scheduler_policy
-            lambda_cenario = network_aware_config["lambda_base"]
-            print(f"  {scenario_name}: lambda = {lambda_cenario}")
-            state = executar_simulacao(
-                jobs=jobs, topology=topology, max_time=100000,
-                scheduler_policy="network_aware",
-                base_scheduler_policy=base_scheduler_policy,
-                lambda_base=lambda_cenario,
-                network_aware_config=network_aware_config,
-                output_dir=baseline_dir, usar_historico_network=True
-            )
-            imprimir_resumo_final(state)
-            nome_arquivo = gerar_nome_arquivo_execucao("network_aware_execution_trace")
-            caminho_saida = os.path.join(scenario_dir, nome_arquivo)
-            salvar_json_execucao(state=state, output_path=caminho_saida,
-                                 policy="network_aware", lambda_base=lambda_cenario)
+
+            caminho_saida = trace_utilizavel(scenario_dir) if retomar_campanha else None
+
+            if caminho_saida is not None:
+                print(f"  {scenario_name}: reaproveitando {os.path.basename(caminho_saida)}")
+            else:
+                network_aware_config = copy.deepcopy(scenario_config)
+                network_aware_config["base_scheduler_policy"] = base_scheduler_policy
+                lambda_cenario = network_aware_config["lambda_base"]
+                print(f"  {scenario_name}: lambda = {lambda_cenario}")
+                state = executar_simulacao(
+                    jobs=jobs, topology=topology, max_time=100000,
+                    scheduler_policy="network_aware",
+                    base_scheduler_policy=base_scheduler_policy,
+                    lambda_base=lambda_cenario,
+                    network_aware_config=network_aware_config,
+                    output_dir=baseline_dir, usar_historico_network=True
+                )
+                imprimir_resumo_final(state)
+                nome_arquivo = gerar_nome_arquivo_execucao("network_aware_execution_trace")
+                caminho_saida = os.path.join(scenario_dir, nome_arquivo)
+                salvar_json_execucao(state=state, output_path=caminho_saida,
+                                     policy="network_aware", lambda_base=lambda_cenario)
         else:
             caminho_saida = buscar_ultimo_log_execucao(scenario_dir)
             if caminho_saida is None:
@@ -394,6 +504,7 @@ def main(scenario_type: str | None = None):
 
     print(f"Scenario: {scenario_type}, Heurísticas: {', '.join(HEURISTICS_TO_RUN)}")
     print(f"Reexecutar simulações: {REEXECUTAR_SIMULACOES}")
+    print(f"Retomar campanha interrompida: {RETOMAR_CAMPANHA}")
 
     if REEXECUTAR_SIMULACOES:
         print(f"Jobs carregados: {len(jobs)}")
@@ -418,7 +529,8 @@ def main(scenario_type: str | None = None):
             project_dir=project_dir,
             experiment_timestamp=experiment_timestamp,
             experiment_dataset_label=experiment_dataset_label,
-            reexecutar_simulacoes=REEXECUTAR_SIMULACOES
+            reexecutar_simulacoes=REEXECUTAR_SIMULACOES,
+            retomar_campanha=RETOMAR_CAMPANHA
         )
         resultados_estatisticos_por_heuristica[base_scheduler_policy] = resultados
         experiment_dirs.append(experiment_dir)
