@@ -1,0 +1,35 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Significância estatística (baseline vs.\ network-aware, por tarefa) no cenário normal, com $\lambda = 0{,}00$.}
+\label{tab:significancia_normal_lambda_000}
+\begin{tabular}{llrrrrr}
+\toprule
+Heurística & Cenário & Hops & Cross-srv & Cross-rack & Cross-grp & Custo \\
+\midrule
+EASY & Balanced & 30,28\%$^{*}$ & 29,86\%$^{*}$ & 57,58\%$^{*}$ & 0,00\% & 31,97\%$^{*}$ \\
+EASY & Rack Strict & 30,28\%$^{*}$ & 29,86\%$^{*}$ & 57,58\%$^{*}$ & 0,00\% & 31,97\%$^{*}$ \\
+EASY & Group Strict & 30,28\%$^{*}$ & 29,86\%$^{*}$ & 57,58\%$^{*}$ & 0,00\% & 31,97\%$^{*}$ \\
+EASY & Comm Cost Strict & 29,87\%$^{*}$ & 29,48\%$^{*}$ & 54,55\%$^{*}$ & 0,00\% & 32,13\%$^{*}$ \\
+\addlinespace
+HEFT & Balanced & 32,75\%$^{*}$ & 21,23\%$^{*}$ & 93,05\%$^{*}$ & 0,00\% & 32,44\%$^{*}$ \\
+HEFT & Rack Strict & 32,67\%$^{*}$ & 21,04\%$^{*}$ & 93,55\%$^{*}$ & 0,00\% & 32,43\%$^{*}$ \\
+HEFT & Group Strict & 32,71\%$^{*}$ & 21,33\%$^{*}$ & 92,31\%$^{*}$ & 0,00\% & 32,59\%$^{*}$ \\
+HEFT & Comm Cost Strict & 32,67\%$^{*}$ & 21,14\%$^{*}$ & 93,05\%$^{*}$ & 0,00\% & 32,59\%$^{*}$ \\
+\addlinespace
+CPOP & Balanced & 23,57\%$^{*}$ & 23,79\%$^{*}$ & 4,35\% & 0,00\% & 24,38\%$^{*}$ \\
+CPOP & Rack Strict & 23,57\%$^{*}$ & 23,69\%$^{*}$ & 13,04\% & 0,00\% & 24,44\%$^{*}$ \\
+CPOP & Group Strict & 23,57\%$^{*}$ & 23,69\%$^{*}$ & 13,04\% & 0,00\% & 24,44\%$^{*}$ \\
+CPOP & Comm Cost Strict & 23,57\%$^{*}$ & 23,79\%$^{*}$ & 4,35\% & 0,00\% & 24,63\%$^{*}$ \\
+\addlinespace
+PEFT & Balanced & 20,58\%$^{*}$ & 20,85\%$^{*}$ & 0,00\% & 0,00\% & 20,73\%$^{*}$ \\
+PEFT & Rack Strict & 20,11\%$^{*}$ & 20,28\%$^{*}$ & 7,14\% & 0,00\% & 20,58\%$^{*}$ \\
+PEFT & Group Strict & 20,11\%$^{*}$ & 20,28\%$^{*}$ & 7,14\% & 0,00\% & 20,58\%$^{*}$ \\
+PEFT & Comm Cost Strict & 20,30\%$^{*}$ & 20,57\%$^{*}$ & 0,00\% & 0,00\% & 20,97\%$^{*}$ \\
+\addlinespace
+\bottomrule
+\end{tabular}
+
+\vspace{2mm}
+\footnotesize Ganho médio percentual por tarefa (baseline vs.\ network-aware). $^{*}$ indica significância estatística ($p<0{,}05$): a normalidade das diferenças foi avaliada via Shapiro-Wilk, com teste $t$ pareado quando normal e Wilcoxon signed-rank caso contrário. Um ganho de 0,00\% sem marcação indica execuções idênticas, o que ocorre em $\lambda = 1$, quando a decisão é integralmente da política base. ``--'' indica dados insuficientes (menos de 3 pares de tarefas válidos).
+\end{table}

@@ -1,0 +1,35 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Significância estatística (baseline vs.\ network-aware, por tarefa) no cenário stress, com $\lambda = 1{,}00$.}
+\label{tab:significancia_stress_lambda_100}
+\begin{tabular}{llrrrrr}
+\toprule
+Heurística & Cenário & Hops & Cross-srv & Cross-rack & Cross-grp & Custo \\
+\midrule
+EASY & Balanced & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+EASY & Rack Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+EASY & Group Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+EASY & Comm Cost Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+\addlinespace
+HEFT & Balanced & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+HEFT & Rack Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+HEFT & Group Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+HEFT & Comm Cost Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+\addlinespace
+CPOP & Balanced & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+CPOP & Rack Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+CPOP & Group Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+CPOP & Comm Cost Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+\addlinespace
+PEFT & Balanced & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+PEFT & Rack Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+PEFT & Group Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+PEFT & Comm Cost Strict & 0,00\% & 0,00\% & 0,00\% & 0,00\% & 0,00\% \\
+\addlinespace
+\bottomrule
+\end{tabular}
+
+\vspace{2mm}
+\footnotesize Ganho médio percentual por tarefa (baseline vs.\ network-aware). $^{*}$ indica significância estatística ($p<0{,}05$): a normalidade das diferenças foi avaliada via Shapiro-Wilk, com teste $t$ pareado quando normal e Wilcoxon signed-rank caso contrário. Um ganho de 0,00\% sem marcação indica execuções idênticas, o que ocorre em $\lambda = 1$, quando a decisão é integralmente da política base. ``--'' indica dados insuficientes (menos de 3 pares de tarefas válidos).
+\end{table}

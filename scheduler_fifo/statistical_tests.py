@@ -74,9 +74,15 @@ def rodar_teste_pareado(
     diferencas = [b - a for b, a in zip(baseline_valores, atual_valores)]
 
     if all(d == 0 for d in diferencas):
+        # Caso legítimo, não falta de dados: as duas execuções posicionaram todas
+        # as tarefas igual (acontece em λ = 1, em que a camada consciente da rede
+        # devolve a decisão inteira à política base). O ganho é exatamente 0%.
         return {
             "metric": metric_key,
             "n": n,
+            "sem_diferenca": True,
+            "ganho_percentual_medio": 0.0,
+            "significativo": False,
             "aviso": "Nenhuma diferença entre baseline e network-aware para esta métrica.",
         }
 
@@ -172,6 +178,13 @@ def salvar_significancia_markdown(resultados: dict, output_path: str) -> None:
         nome = NOMES_METRICAS[metrica]
         resultado = resultados.get(metrica, {})
 
+        if resultado.get("sem_diferenca"):
+            linhas.append(
+                f"| {nome} | {resultado.get('n', '-')} | - | - | - | Não | - | 0,00% "
+                "(execuções idênticas) |"
+            )
+            continue
+
         if "aviso" in resultado:
             linhas.append(f"| {nome} | {resultado.get('n', '-')} | - | - | - | - | - | {resultado['aviso']} |")
             continue
@@ -231,7 +244,14 @@ NOMES_METRICAS_CURTOS = {
 
 
 def formatar_celula_ganho(resultado: dict | None) -> str:
-    if not resultado or "aviso" in resultado:
+    if not resultado:
+        return "--"
+
+    # Execuções idênticas: ganho nulo de fato, e não ausência de dados.
+    if resultado.get("sem_diferenca"):
+        return formatar_numero_pt_br(0.0, 2) + "\\%"
+
+    if "aviso" in resultado:
         return "--"
 
     ganho = resultado.get("ganho_percentual_medio")
@@ -299,8 +319,9 @@ def gerar_tabela_latex_significancia_consolidada(
         "\\footnotesize Ganho médio percentual por tarefa (baseline vs.\\ network-aware). "
         "$^{*}$ indica significância estatística ($p<0{,}05$): a normalidade das diferenças foi "
         "avaliada via Shapiro-Wilk, com teste $t$ pareado quando normal e Wilcoxon signed-rank caso "
-        "contrário. ``--'' indica dados insuficientes (nenhuma diferença entre as execuções ou menos "
-        "de 3 pares de tarefas válidos)."
+        "contrário. Um ganho de 0,00\\% sem marcação indica execuções idênticas, o que ocorre em "
+        "$\\lambda = 1$, quando a decisão é integralmente da política base. ``--'' indica dados "
+        "insuficientes (menos de 3 pares de tarefas válidos)."
     )
     linhas.append("\\end{table}")
 

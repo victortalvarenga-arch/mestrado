@@ -40,7 +40,7 @@ RETOMAR_CAMPANHA = True
 # de pesos de métrica são executadas para todas as heurísticas naquele λ, com
 # resultados, gráficos e tabela LaTeX próprios em uma subpasta por λ.
 # ---------------------------------------------------------------------------
-LAMBDA_VALUES = [0.25, 0.50, 0.75]
+LAMBDA_VALUES = [0.0, 0.25, 0.50, 0.75, 1.0]
 
 # Normalização de Score_base antes da Equação 1:
 #   "candidates" → min-max entre os candidatos da decisão, mesma convenção de
