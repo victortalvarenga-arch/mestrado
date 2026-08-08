@@ -7,6 +7,7 @@ from logs import gerar_nome_arquivo_execucao, salvar_json_execucao, buscar_ultim
 from comparison import (
     salvar_json_comparacao_execucoes,
     salvar_grafico_consolidado_heuristica,
+    salvar_heatmaps_ganho_por_lambda,
 )
 from statistical_tests import salvar_tabela_latex_significancia_consolidada
 from export_topology import exportar_topologia_dot
@@ -566,6 +567,24 @@ def main(scenario_type: str | None = None):
             output_path=caminho_tabela_consolidada,
         )
         print(f"Tabela LaTeX consolidada gerada: {caminho_tabela_consolidada}")
+
+    heatmaps_dir = os.path.join(
+        project_dir, "images_overleaf", experiment_dataset_label, "heatmaps"
+    )
+    caminhos_heatmaps = salvar_heatmaps_ganho_por_lambda(
+        resultados_por_heuristica=resultados_estatisticos_por_heuristica,
+        output_dir=heatmaps_dir,
+        heuristica_order=HEURISTICS_TO_RUN,
+        lambda_order=list(LAMBDA_POR_ROTULO),
+        lambda_labels={
+            lambda_key: formatar_lambda_latex(valor_lambda)
+            for lambda_key, valor_lambda in LAMBDA_POR_ROTULO.items()
+        },
+        scenario_order=WEIGHT_SCENARIO_ORDER,
+        scenario_labels=SCENARIO_LABELS,
+    )
+    for caminho_heatmap in caminhos_heatmaps:
+        print(f"Heatmap gerado: {caminho_heatmap}")
 
     print("\n=== Todos os experimentos finalizados ===")
 

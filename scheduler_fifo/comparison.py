@@ -4,6 +4,7 @@ from execution_metrics import calcular_makespan_json
 from network_metrics import extrair_eventos_trafego_por_tarefa
 from statistical_tests import analisar_significancia_estatistica, salvar_significancia_markdown
 from matplotlib.patches import Patch
+from matplotlib.colors import TwoSlopeNorm
 
 
 # Outliers individuais (pontos além de 1.5*IQR) poluem o boxplot quando há
@@ -615,6 +616,102 @@ def salvar_grafico_consolidado_heuristica(
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
+
+
+def salvar_heatmaps_ganho_por_lambda(
+    resultados_por_heuristica: dict,
+    output_dir: str,
+    heuristica_order: list,
+    lambda_order: list,
+    lambda_labels: dict,
+    scenario_order: list,
+    scenario_labels: dict,
+) -> list:
+    """
+    Gera um heatmap para cada métrica de tráfego. Cada figura tem um painel por
+    configuração de pesos; linhas representam as heurísticas-base, colunas os
+    valores de lambda e as células mostram o ganho médio percentual por tarefa.
+    """
+    metricas = [
+        ("total_hops", "Hops"),
+        ("cross_server_flows", "Cross-server flows"),
+        ("cross_rack_flows", "Cross-rack flows"),
+        ("cross_group_flows", "Cross-group flows"),
+        ("estimated_comm_cost", "Custo de comunicação"),
+        ("avg_hops_per_flow", "Hops por fluxo"),
+    ]
+
+    os.makedirs(output_dir, exist_ok=True)
+    caminhos_gerados = []
+
+    for metric_key, metric_label in metricas:
+        valores_por_cenario = {}
+        ganhos_validos = []
+
+        for scenario_name in scenario_order:
+            matriz = []
+            for heuristica in heuristica_order:
+                linha = []
+                resultados_heuristica = resultados_por_heuristica.get(heuristica) or {}
+
+                for lambda_key in lambda_order:
+                    resultado = (
+                        resultados_heuristica.get(lambda_key, {})
+                        .get(scenario_name, {})
+                        .get(metric_key)
+                    )
+                    ganho = None if not resultado else resultado.get("ganho_percentual_medio")
+                    linha.append(ganho)
+                    if ganho is not None:
+                        ganhos_validos.append(ganho)
+                matriz.append(linha)
+            valores_por_cenario[scenario_name] = matriz
+
+        if not ganhos_validos:
+            continue
+
+        limite = max(max(abs(ganho) for ganho in ganhos_validos), 1.0)
+        norma = TwoSlopeNorm(vmin=-limite, vcenter=0.0, vmax=limite)
+        fig, axes = plt.subplots(
+            2, 2, figsize=(11, 7), sharex=True, sharey=True, layout="constrained"
+        )
+        imagem = None
+
+        for ax, scenario_name in zip(axes.flat, scenario_order):
+            matriz = valores_por_cenario[scenario_name]
+            dados = [
+                [float("nan") if ganho is None else ganho for ganho in linha]
+                for linha in matriz
+            ]
+            imagem = ax.imshow(dados, cmap="RdYlGn", norm=norma, aspect="auto")
+
+            ax.set_title(scenario_labels.get(scenario_name, scenario_name), fontsize=11)
+            ax.set_xticks(range(len(lambda_order)))
+            ax.set_xticklabels([lambda_labels[lambda_key] for lambda_key in lambda_order])
+            ax.set_yticks(range(len(heuristica_order)))
+            ax.set_yticklabels([heuristica.upper() for heuristica in heuristica_order])
+
+            for linha_idx, linha in enumerate(matriz):
+                for coluna_idx, ganho in enumerate(linha):
+                    texto = "--" if ganho is None else f"{ganho:.1f}%"
+                    cor = "white" if ganho is not None and abs(ganho) > limite * 0.58 else "black"
+                    ax.text(coluna_idx, linha_idx, texto, ha="center", va="center", fontsize=8, color=cor)
+
+        for ax in axes[-1]:
+            ax.set_xlabel("λ")
+        for ax in axes[:, 0]:
+            ax.set_ylabel("Heurística-base")
+
+        fig.suptitle(f"Ganho médio por tarefa — {metric_label}", fontsize=14)
+        colorbar = fig.colorbar(imagem, ax=axes.ravel().tolist(), shrink=0.88, pad=0.02)
+        colorbar.set_label("Ganho (%)")
+
+        output_path = os.path.join(output_dir, f"heatmap_ganho_lambda_{metric_key}.png")
+        fig.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        caminhos_gerados.append(output_path)
+
+    return caminhos_gerados
 
 
 def salvar_json_comparacao_execucoes(
